@@ -5,75 +5,171 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StudyAI – Die smarte Lernapp</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Markdown renderer for summary view -->
- <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<link rel="manifest" href="manifest.json">
-<script>
-  if ('serviceWorker' in navigator)
-    navigator.serviceWorker.register('/studyai/sw.js');
-</script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
 <!-- ── Header ──────────────────────────────────────────────────────────── -->
 <header>
-  <div class="logo">Study<span>AI</span></div>
-  <button class="api-key-btn" id="api-key-btn">🔑 API Key eingeben</button>
+  <div class="logo" id="logo-btn">Study<span>AI</span></div>
+
+  <nav class="main-nav">
+    <button class="nav-item active" data-target="dashboard">
+      <span class="nav-icon">🏠</span> Übersicht
+    </button>
+    <button class="nav-item" data-target="upload">
+      <span class="nav-icon">＋</span> Neue Analyse
+    </button>
+  </nav>
+
+  <button class="api-key-btn" id="api-key-btn">🔑 API Key</button>
 </header>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Dashboard                                                     -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-dashboard" class="screen active">
+  <div class="dashboard">
+
+    <!-- Greeting + CTA -->
+    <div class="dash-hero">
+      <div class="dash-hero-text">
+        <h1 id="greeting">Willkommen zurück!</h1>
+        <p>Wähle ein Projekt oder starte eine neue Analyse.</p>
+      </div>
+      <button class="btn-primary" onclick="navTo('upload')">
+        ⚡ Neue Analyse starten
+      </button>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">📁</div>
+        <div class="stat-num" id="stat-projects">0</div>
+        <div class="stat-label">Projekte</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🗂️</div>
+        <div class="stat-num" id="stat-cards">0</div>
+        <div class="stat-label">Karten gelernt</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-num" id="stat-quizzes">0</div>
+        <div class="stat-label">Quizze gespielt</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-num" id="stat-streak">0</div>
+        <div class="stat-label">Tage Streak</div>
+      </div>
+    </div>
+
+    <!-- Projects Section -->
+    <div class="projects-section">
+      <div class="projects-top">
+        <h2>Meine Projekte</h2>
+        <div class="projects-controls">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" class="search-input" placeholder="Projekt suchen…">
+          </div>
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="all">Alle</button>
+            <button class="filter-tab" data-filter="flashcards">🗂️ Karten</button>
+            <button class="filter-tab" data-filter="summary">📝 Lernzettel</button>
+            <button class="filter-tab" data-filter="quiz">🎯 Quiz</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project Grid -->
+      <div class="project-grid" id="project-grid">
+        <!-- rendered by JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="empty-state" style="display:none">
+        <div class="empty-icon">📂</div>
+        <h3>Noch keine Projekte</h3>
+        <p>Lade deine erste Datei hoch und die KI erstellt sofort Lernmaterial.</p>
+        <button class="btn-primary" onclick="navTo('upload')">Erste Analyse starten</button>
+      </div>
+    </div>
+
+  </div>
+</main>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <!-- Screen: Upload                                                        -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
-<main id="screen-upload" class="screen active">
+<main id="screen-upload" class="screen">
 
-  <div class="hero">
-    <h1>Datei rein.<br><span>In Sekunden lernbereit.</span></h1>
-    <p>PDF, Word oder Bild hochladen – die KI erstellt sofort Karteikarten, Lernzettel oder ein Quiz.</p>
-  </div>
-
-  <!-- Drop Zone -->
-  <div id="upload-zone" class="upload-zone">
-    <div class="upload-icon">📂</div>
-    <h3>Datei hier reinziehen oder klicken</h3>
-    <p>Dokument auswählen um zu starten</p>
-    <div class="file-types">
-      <span class="badge">PDF</span>
-      <span class="badge">Word (.docx)</span>
-      <span class="badge">Bild</span>
-      <span class="badge">Text</span>
+  <div class="upload-page">
+    <div class="hero">
+      <h1>Datei rein.<br><span class="gradient-text">In Sekunden lernbereit.</span></h1>
+      <p>PDF, Word oder Bild hochladen – die KI erstellt sofort Karteikarten, Lernzettel oder ein Quiz.</p>
     </div>
-  </div>
-  <input type="file" id="file-input" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.gif,.webp">
 
-  <!-- File Preview (hidden until file is selected) -->
-  <div id="file-preview" class="file-preview" style="display:none"></div>
-
-  <!-- Mode Selection -->
-  <div class="mode-section">
-    <h3>Was soll die KI erstellen?</h3>
-    <div class="mode-grid">
-      <div class="mode-card selected" data-mode="flashcards">
-        <div class="mode-icon">🗂️</div>
-        <h4>Karteikarten</h4>
-        <p>Begriffe &amp; Erklärungen zum Abfragen</p>
-      </div>
-      <div class="mode-card" data-mode="summary">
-        <div class="mode-icon">📝</div>
-        <h4>Lernzettel</h4>
-        <p>Strukturierte Zusammenfassung</p>
-      </div>
-      <div class="mode-card" data-mode="quiz">
-        <div class="mode-icon">🎯</div>
-        <h4>Quiz</h4>
-        <p>Multiple-Choice Abfrage</p>
+    <!-- Drop Zone -->
+    <div id="upload-zone" class="upload-zone">
+      <div class="upload-icon-anim">📂</div>
+      <h3>Datei hier reinziehen oder klicken</h3>
+      <p>Dokument auswählen um zu starten</p>
+      <div class="file-types">
+        <span class="badge">PDF</span>
+        <span class="badge">Word</span>
+        <span class="badge">Bild</span>
+        <span class="badge">Text</span>
       </div>
     </div>
-  </div>
+    <input type="file" id="file-input" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.gif,.webp">
 
-  <!-- Analyze Button -->
-  <button class="btn-primary" id="analyze-btn" disabled>
-    ⚡ Jetzt analysieren
-  </button>
+    <!-- File Preview -->
+    <div id="file-preview" class="file-preview" style="display:none"></div>
+
+    <!-- Project Name -->
+    <div class="project-name-wrap" id="project-name-wrap" style="display:none">
+      <label class="input-label">Projektname (optional)</label>
+      <input type="text" id="project-name-input" class="project-name-input" placeholder="z.B. Mathe Kapitel 3">
+    </div>
+
+    <!-- Mode Selection -->
+    <div class="mode-section">
+      <h3>Was soll die KI erstellen?</h3>
+      <div class="mode-grid">
+        <div class="mode-card selected" data-mode="flashcards">
+          <div class="mode-icon">🗂️</div>
+          <h4>Karteikarten</h4>
+          <p>Begriffe &amp; Erklärungen zum Abfragen mit Flip-Animation</p>
+          <div class="mode-tag">Empfohlen</div>
+        </div>
+        <div class="mode-card" data-mode="summary">
+          <div class="mode-icon">📝</div>
+          <h4>Lernzettel</h4>
+          <p>Strukturierte Zusammenfassung mit Überschriften</p>
+        </div>
+        <div class="mode-card" data-mode="quiz">
+          <div class="mode-icon">🎯</div>
+          <h4>Quiz</h4>
+          <p>Multiple-Choice Abfrage mit Score am Ende</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature Pills -->
+    <div class="feature-pills">
+      <span class="pill">✓ Wiederholungslogik</span>
+      <span class="pill">✓ Fortschritt gespeichert</span>
+      <span class="pill">✓ PDF-Export</span>
+      <span class="pill">✓ Themenfilter</span>
+    </div>
+
+    <button class="btn-primary btn-lg" id="analyze-btn" disabled>
+      ⚡ Jetzt analysieren
+    </button>
+  </div>
 
 </main>
 
@@ -81,10 +177,17 @@
 <!-- Screen: Loading                                                       -->
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <main id="screen-loading" class="screen">
-  <div class="loader-ring"></div>
-  <div class="loading-text">
-    <strong>KI analysiert dein Dokument…</strong>
-    Einen Moment bitte
+  <div class="loading-wrap">
+    <div class="loader-ring"></div>
+    <div class="loading-text">
+      <strong>KI analysiert dein Dokument…</strong>
+      Einen Moment bitte
+    </div>
+    <div class="loading-steps">
+      <div class="load-step active" id="step-1">📂 Datei wird gelesen</div>
+      <div class="load-step" id="step-2">🧠 Inhalt wird verstanden</div>
+      <div class="load-step" id="step-3">✨ Lernmaterial wird erstellt</div>
+    </div>
   </div>
 </main>
 
@@ -95,10 +198,9 @@
   <div class="result-header">
     <button class="btn-secondary btn-back">← Zurück</button>
     <h2>🗂️ Karteikarten</h2>
+    <button class="btn-secondary" id="fc-shuffle-btn">🔀 Mischen</button>
   </div>
-  <div class="flashcard-container" id="fc-container">
-    <!-- rendered by JS -->
-  </div>
+  <div class="flashcard-container" id="fc-container"></div>
 </main>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -111,9 +213,7 @@
     <button class="btn-export" id="summary-export">🖨️ Drucken / PDF</button>
   </div>
   <div class="summary-body">
-    <div class="summary-content" id="summary-content">
-      <!-- rendered by JS -->
-    </div>
+    <div class="summary-content" id="summary-content"></div>
   </div>
 </main>
 
@@ -124,10 +224,11 @@
   <div class="result-header">
     <button class="btn-secondary btn-back">← Zurück</button>
     <h2>🎯 Quiz</h2>
+    <div class="quiz-header-score">
+      Punkte: <strong id="quiz-score-hdr">0</strong>
+    </div>
   </div>
-  <div class="quiz-body" id="quiz-body">
-    <!-- rendered by JS -->
-  </div>
+  <div class="quiz-body" id="quiz-body"></div>
 </main>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -135,8 +236,9 @@
 <!-- ══════════════════════════════════════════════════════════════════════ -->
 <div class="modal-backdrop" id="modal-backdrop">
   <div class="modal">
-    <h3>🔑 Anthropic API Key</h3>
-    <p>Den API Key bekommst du unter console.anthropic.com → API Keys. Er wird nur lokal in deinem Browser gespeichert.</p>
+    <div class="modal-icon">🔑</div>
+    <h3>Anthropic API Key</h3>
+    <p>Den Key bekommst du kostenlos (5$ Startguthaben) unter <strong>console.anthropic.com</strong> → API Keys. Er wird nur lokal gespeichert.</p>
     <div class="input-group">
       <label>API Key</label>
       <input type="password" id="api-key-input" placeholder="sk-ant-…">
@@ -144,6 +246,19 @@
     <div class="modal-actions">
       <button class="btn-secondary" id="modal-cancel">Abbrechen</button>
       <button class="btn-primary" id="modal-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal-backdrop" id="delete-backdrop">
+  <div class="modal modal-sm">
+    <div class="modal-icon">🗑️</div>
+    <h3>Projekt löschen?</h3>
+    <p>Dieser Schritt kann nicht rückgängig gemacht werden.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="delete-cancel">Abbrechen</button>
+      <button class="btn-danger" id="delete-confirm">Löschen</button>
     </div>
   </div>
 </div>
