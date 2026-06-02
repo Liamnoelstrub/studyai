@@ -1,106 +1,364 @@
-// ── State ──────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
+const PROJECTS_KEY = 'studyai_projects';
+const STREAK_KEY   = 'studyai_streak';
+const STATS_KEY    = 'studyai_global_stats';
+
+// ── State ────────────────────────────────────────────────────────────────────
 const state = {
-  apiKey: localStorage.getItem('studyai_key') || '',
-  file: null,
-  fileText: '',
-  mode: 'flashcards',
-  flashcards: [],
-  fcQueue: [],
-  fcIndex: 0,
-  fcCorrect: 0,
-  fcFlipped: false,
-  quiz: [],
-  quizIndex: 0,
-  quizScore: 0,
+  apiKey:       localStorage.getItem('studyai_key') || '',
+  file:         null,
+  mode:         'flashcards',
+  currentProject: null,   // loaded project being viewed
+  flashcards:   [],
+  fcQueue:      [],
+  fcIndex:      0,
+  fcCorrect:    0,
+  fcFlipped:    false,
+  quiz:         [],
+  quizIndex:    0,
+  quizScore:    0,
   quizAnswered: false,
+  deleteTargetId: null,
+  filterMode:   'all',
+  searchQuery:  '',
 };
 
-// ── DOM refs ────────────────────────────────────────────────────────────────
+// ── DOM helpers ───────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-const screens = {
-  upload:     $('screen-upload'),
-  loading:    $('screen-loading'),
-  flashcards: $('screen-flashcards'),
-  summary:    $('screen-summary'),
-  quiz:       $('screen-quiz'),
-};
 
-// ── Navigation ──────────────────────────────────────────────────────────────
+// ── Screen Navigation ─────────────────────────────────────────────────────────
+const SCREENS = ['dashboard','upload','loading','flashcards','summary','quiz'];
+
 function showScreen(name) {
-  Object.values(screens).forEach(s => s.classList.remove('active'));
-  screens[name].classList.add('active');
+  SCREENS.forEach(s => {
+    const el = $(`screen-${s}`);
+    if (el) el.classList.remove('active');
+  });
+  const target = $(`screen-${name}`);
+  if (target) target.classList.add('active');
+
+  // Update nav highlight
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.target === name);
+  });
 }
 
-// ── Toast ───────────────────────────────────────────────────────────────────
+function navTo(screen) {
+  if (screen === 'dashboard') renderDashboard();
+  showScreen(screen);
+}
+
+// Nav buttons
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = btn.dataset.target;
+    if (target === 'dashboard') renderDashboard();
+    showScreen(target);
+  });
+});
+$('logo-btn').addEventListener('click', () => navTo('dashboard'));
+
+// Back buttons on result screens
+document.querySelectorAll('.btn-back').forEach(btn => {
+  btn.addEventListener('click', () => navTo('dashboard'));
+});
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
 function toast(msg, type = 'success', duration = 3000) {
   const el = $('toast');
   el.textContent = msg;
   el.className = `toast ${type} show`;
-  setTimeout(() => el.classList.remove('show'), duration);
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), duration);
 }
 
-// ── API Key Modal ────────────────────────────────────────────────────────────
+// ── Greeting ──────────────────────────────────────────────────────────────────
+function setGreeting() {
+  const h = new Date().getHours();
+  const greet = h < 12 ? 'Guten Morgen!' : h < 18 ? 'Guten Tag!' : 'Guten Abend!';
+  $('greeting').textContent = greet;
+}
+
+// ── Streak Tracking ───────────────────────────────────────────────────────────
+function updateStreak() {
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  let data = JSON.parse(localStorage.getItem(STREAK_KEY) || '{"lastDay":"","count":0}');
+  if (data.lastDay === today) return;
+  data.count = (data.lastDay === yesterday) ? data.count + 1 : 1;
+  data.lastDay = today;
+  localStorage.setItem(STREAK_KEY, JSON.stringify(data));
+}
+
+function getStreak() {
+  const data = JSON.parse(localStorage.getItem(STREAK_KEY) || '{"lastDay":"","count":0}');
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  if (data.lastDay !== today && data.lastDay !== yesterday) return 0;
+  return data.count;
+}
+
+// ── Global Stats ──────────────────────────────────────────────────────────────
+function getGlobalStats() {
+  return JSON.parse(localStorage.getItem(STATS_KEY) || '{"cardsLearned":0,"quizzesPlayed":0}');
+}
+
+function addStat(key, amount = 1) {
+  const s = getGlobalStats();
+  s[key] = (s[key] || 0) + amount;
+  localStorage.setItem(STATS_KEY, JSON.stringify(s));
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+function getProjects() {
+  return JSON.parse(localStorage.getItem(PROJECTS_KEY) || '[]');
+}
+
+function saveProjectToStorage(project) {
+  const projects = getProjects();
+  const existingIdx = projects.findIndex(p => p.id === project.id);
+  if (existingIdx >= 0) {
+    projects[existingIdx] = project;
+  } else {
+    projects.unshift(project);
+  }
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+}
+
+function deleteProject(id) {
+  const projects = getProjects().filter(p => p.id !== id);
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+}
+
+function createProject(name, fileName, mode, data) {
+  const modeLabels = { flashcards:'Karteikarten', summary:'Lernzettel', quiz:'Quiz' };
+  const preview = mode === 'flashcards'
+    ? data[0]?.front || ''
+    : mode === 'quiz'
+    ? data[0]?.question || ''
+    : data.slice(0, 80).replace(/[#*>\-]/g, '').trim();
+
+  return {
+    id: Date.now().toString(),
+    name: name || fileName.replace(/\.[^.]+$/, ''),
+    fileName,
+    mode,
+    data,
+    preview,
+    createdAt: new Date().toISOString(),
+    stats: { cardsLearned: 0, quizPlays: 0, bestScore: null },
+  };
+}
+
+// ── Dashboard Render ──────────────────────────────────────────────────────────
+function renderDashboard() {
+  setGreeting();
+  updateStreak();
+  const projects = getProjects();
+  const globalStats = getGlobalStats();
+
+  // Stats
+  animateNum($('stat-projects'), projects.length);
+  animateNum($('stat-cards'),    globalStats.cardsLearned || 0);
+  animateNum($('stat-quizzes'),  globalStats.quizzesPlayed || 0);
+  animateNum($('stat-streak'),   getStreak());
+
+  renderProjectGrid(projects);
+}
+
+function animateNum(el, target) {
+  if (!el) return;
+  let start = 0;
+  const step = Math.ceil(target / 30);
+  const interval = setInterval(() => {
+    start = Math.min(start + step, target);
+    el.textContent = start;
+    if (start >= target) clearInterval(interval);
+  }, 20);
+}
+
+function renderProjectGrid(projects) {
+  const grid       = $('project-grid');
+  const emptyState = $('empty-state');
+  const query      = state.searchQuery.toLowerCase();
+  const filter     = state.filterMode;
+
+  let filtered = projects.filter(p => {
+    const matchFilter = filter === 'all' || p.mode === filter;
+    const matchSearch = !query || p.name.toLowerCase().includes(query) || p.fileName.toLowerCase().includes(query);
+    return matchFilter && matchSearch;
+  });
+
+  if (filtered.length === 0) {
+    grid.style.display = 'none';
+    emptyState.style.display = '';
+    emptyState.querySelector('h3').textContent = projects.length === 0
+      ? 'Noch keine Projekte'
+      : 'Keine Projekte gefunden';
+    emptyState.querySelector('p').textContent = projects.length === 0
+      ? 'Lade deine erste Datei hoch und die KI erstellt sofort Lernmaterial.'
+      : 'Versuche eine andere Suche oder einen anderen Filter.';
+    return;
+  }
+
+  grid.style.display = '';
+  emptyState.style.display = 'none';
+
+  const modeLabel = { flashcards:'🗂️ Karteikarten', summary:'📝 Lernzettel', quiz:'🎯 Quiz' };
+  const modeIcon  = { flashcards:'🗂️', summary:'📝', quiz:'🎯' };
+
+  grid.innerHTML = filtered.map(p => {
+    const date = new Date(p.createdAt).toLocaleDateString('de-DE', { day:'2-digit', month:'short', year:'numeric' });
+    const statsHtml = p.mode === 'flashcards'
+      ? `<span class="project-stat">🗂️ ${Array.isArray(p.data) ? p.data.length : 0} Karten</span>`
+      : p.mode === 'quiz'
+      ? `<span class="project-stat">🎯 ${Array.isArray(p.data) ? p.data.length : 0} Fragen${p.stats.bestScore !== null ? ` · Beste: ${p.stats.bestScore}%` : ''}</span>`
+      : `<span class="project-stat">📝 Zusammenfassung</span>`;
+
+    return `
+      <div class="project-card" data-mode="${p.mode}" data-id="${p.id}">
+        <div class="project-card-header">
+          <span class="project-mode-badge">${modeLabel[p.mode]}</span>
+        </div>
+        <div class="project-name">${escHtml(p.name)}</div>
+        <div class="project-file">📄 ${escHtml(p.fileName)}</div>
+        ${p.preview ? `<div class="project-preview">${escHtml(p.preview)}</div>` : ''}
+        <div class="project-stats-row">${statsHtml}</div>
+        <div class="project-footer">
+          <div class="project-date">${date}</div>
+          <div class="project-actions">
+            <button class="btn-open" onclick="openProject('${p.id}')">Öffnen →</button>
+            <button class="btn-delete-sm" onclick="confirmDelete('${p.id}')" title="Löschen">🗑</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Stagger animation
+  grid.querySelectorAll('.project-card').forEach((card, i) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(12px)';
+    setTimeout(() => {
+      card.style.transition = 'opacity .3s, transform .3s';
+      card.style.opacity = '1';
+      card.style.transform = '';
+    }, i * 60);
+  });
+}
+
+// Search & Filter
+$('search-input').addEventListener('input', e => {
+  state.searchQuery = e.target.value;
+  renderProjectGrid(getProjects());
+});
+
+document.querySelectorAll('.filter-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filterMode = btn.dataset.filter;
+    renderProjectGrid(getProjects());
+  });
+});
+
+// ── Open Project ──────────────────────────────────────────────────────────────
+function openProject(id) {
+  const project = getProjects().find(p => p.id === id);
+  if (!project) return;
+  state.currentProject = project;
+  state.mode = project.mode;
+
+  if (project.mode === 'flashcards') {
+    state.flashcards = project.data;
+    initFlashcards();
+    showScreen('flashcards');
+  } else if (project.mode === 'summary') {
+    showSummary(project.data);
+    showScreen('summary');
+  } else if (project.mode === 'quiz') {
+    state.quiz = project.data;
+    initQuiz();
+    showScreen('quiz');
+  }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+function confirmDelete(id) {
+  state.deleteTargetId = id;
+  $('delete-backdrop').classList.add('open');
+}
+
+$('delete-cancel').addEventListener('click', () => {
+  $('delete-backdrop').classList.remove('open');
+  state.deleteTargetId = null;
+});
+
+$('delete-confirm').addEventListener('click', () => {
+  if (state.deleteTargetId) {
+    deleteProject(state.deleteTargetId);
+    $('delete-backdrop').classList.remove('open');
+    state.deleteTargetId = null;
+    renderDashboard();
+    toast('Projekt gelöscht', 'info');
+  }
+});
+
+// ── API Key Modal ─────────────────────────────────────────────────────────────
 $('api-key-btn').addEventListener('click', () => {
   $('api-key-input').value = state.apiKey;
   $('modal-backdrop').classList.add('open');
 });
-
-$('modal-cancel').addEventListener('click', () => {
-  $('modal-backdrop').classList.remove('open');
+$('modal-cancel').addEventListener('click', () => $('modal-backdrop').classList.remove('open'));
+$('modal-backdrop').addEventListener('click', e => {
+  if (e.target === $('modal-backdrop')) $('modal-backdrop').classList.remove('open');
 });
-
 $('modal-save').addEventListener('click', () => {
   const key = $('api-key-input').value.trim();
   if (!key.startsWith('sk-ant-')) {
-    toast('Ungültiger API Key (muss mit sk-ant- beginnen)', 'error');
+    toast('Ungültiger Key — muss mit sk-ant- beginnen', 'error');
     return;
   }
   state.apiKey = key;
   localStorage.setItem('studyai_key', key);
   $('modal-backdrop').classList.remove('open');
   updateApiBtn();
-  toast('API Key gespeichert');
-});
-
-$('modal-backdrop').addEventListener('click', e => {
-  if (e.target === $('modal-backdrop')) $('modal-backdrop').classList.remove('open');
+  toast('API Key gespeichert ✓');
 });
 
 function updateApiBtn() {
   const btn = $('api-key-btn');
   if (state.apiKey) {
-    btn.textContent = '🔑 API Key gesetzt';
+    btn.textContent = '✓ API Key';
     btn.classList.add('active');
   } else {
-    btn.innerHTML = '🔑 API Key eingeben';
+    btn.textContent = '🔑 API Key';
     btn.classList.remove('active');
   }
 }
 updateApiBtn();
 
-// ── File Upload ──────────────────────────────────────────────────────────────
+// ── File Upload ───────────────────────────────────────────────────────────────
 const uploadZone = $('upload-zone');
 const fileInput  = $('file-input');
 
 uploadZone.addEventListener('click', () => fileInput.click());
-uploadZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  uploadZone.classList.add('dragover');
-});
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
 uploadZone.addEventListener('drop', e => {
   e.preventDefault();
   uploadZone.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) handleFile(file);
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener('change', () => {
   if (fileInput.files[0]) handleFile(fileInput.files[0]);
 });
 
 function handleFile(file) {
-  const allowed = ['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                   'text/plain','image/jpeg','image/png','image/gif','image/webp'];
+  const allowed = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain','image/jpeg','image/png','image/gif','image/webp'
+  ];
   if (!allowed.includes(file.type) && !file.name.endsWith('.txt')) {
     toast('Nicht unterstützter Dateityp', 'error');
     return;
@@ -126,10 +384,14 @@ function showFilePreview(file) {
       <div class="file-name">${file.name}</div>
       <div class="file-size">${size}</div>
     </div>
-    <button class="btn-remove" title="Entfernen">✕</button>
-  `;
+    <button class="btn-remove" title="Entfernen">✕</button>`;
   $('file-preview').style.display = 'flex';
   uploadZone.style.display = 'none';
+
+  // Pre-fill project name
+  const nameInput = $('project-name-input');
+  nameInput.value = file.name.replace(/\.[^.]+$/, '');
+  $('project-name-wrap').style.display = '';
 
   $('file-preview').querySelector('.btn-remove').addEventListener('click', clearFile);
   updateAnalyzeBtn();
@@ -138,12 +400,13 @@ function showFilePreview(file) {
 function clearFile() {
   state.file = null;
   $('file-preview').style.display = 'none';
+  $('project-name-wrap').style.display = 'none';
   uploadZone.style.display = '';
   fileInput.value = '';
   updateAnalyzeBtn();
 }
 
-// ── Mode Selection ───────────────────────────────────────────────────────────
+// ── Mode Selection ────────────────────────────────────────────────────────────
 document.querySelectorAll('.mode-card').forEach(card => {
   card.addEventListener('click', () => {
     document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
@@ -156,7 +419,7 @@ function updateAnalyzeBtn() {
   $('analyze-btn').disabled = !state.file;
 }
 
-// ── Analyze ──────────────────────────────────────────────────────────────────
+// ── Analyze ───────────────────────────────────────────────────────────────────
 $('analyze-btn').addEventListener('click', async () => {
   if (!state.file) return;
   if (!state.apiKey) {
@@ -164,11 +427,14 @@ $('analyze-btn').addEventListener('click', async () => {
     $('api-key-btn').click();
     return;
   }
+  updateStreak();
   await analyzeFile();
 });
 
 async function analyzeFile() {
   showScreen('loading');
+  animateLoadingSteps();
+
   try {
     const content = await buildMessageContent(state.file);
     const prompt  = buildPrompt(state.mode);
@@ -181,89 +447,80 @@ async function analyzeFile() {
   }
 }
 
-// ── File → Message Content ────────────────────────────────────────────────────
+function animateLoadingSteps() {
+  const steps = ['step-1','step-2','step-3'];
+  steps.forEach(id => {
+    const el = $(id);
+    if (el) { el.classList.remove('active','done'); }
+  });
+  let i = 0;
+  const tick = () => {
+    if (i >= steps.length) return;
+    if (i > 0) $(steps[i-1]).classList.replace('active','done');
+    $(steps[i]).classList.add('active');
+    i++;
+    if (i < steps.length) setTimeout(tick, 1800);
+  };
+  setTimeout(tick, 300);
+}
+
+// ── File → API Content ────────────────────────────────────────────────────────
 async function buildMessageContent(file) {
   if (file.type.startsWith('image/')) {
     const b64 = await fileToBase64(file);
     return [
       { type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },
-      { type: 'text', text: 'Analysiere den Inhalt dieses Dokuments/Bildes.' }
+      { type: 'text', text: 'Analysiere den Inhalt dieses Bildes/Dokuments.' }
     ];
   }
-
   if (file.type === 'application/pdf') {
     const b64 = await fileToBase64(file);
     return [
-      {
-        type: 'document',
-        source: { type: 'base64', media_type: 'application/pdf', data: b64 }
-      },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
       { type: 'text', text: 'Analysiere den Inhalt dieses Dokuments.' }
     ];
   }
-
-  // Text / DOCX — read as text
   const text = await fileToText(file);
   return [{ type: 'text', text: `Dokumentinhalt:\n\n${text}` }];
 }
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+const fileToBase64 = file => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload  = () => res(r.result.split(',')[1]);
+  r.onerror = rej;
+  r.readAsDataURL(file);
+});
 
-function fileToText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsText(file, 'utf-8');
-  });
-}
+const fileToText = file => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload  = () => res(r.result);
+  r.onerror = rej;
+  r.readAsText(file, 'utf-8');
+});
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 function buildPrompt(mode) {
-  if (mode === 'flashcards') {
-    return `Erstelle aus dem Inhalt dieses Dokuments 10–15 Karteikarten zum Lernen.
-Antworte NUR mit einem gültigen JSON-Array (kein Markdown, kein Text davor/danach):
-[
-  {"front": "Begriff oder Frage", "back": "Erklärung oder Antwort"},
-  ...
-]
-Die Karten sollen die wichtigsten Konzepte, Begriffe und Fakten abdecken.
-Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
-  }
+  if (mode === 'flashcards') return `
+Erstelle aus dem Dokumentinhalt 10–15 Lern-Karteikarten.
+Antworte NUR mit einem validen JSON-Array, kein anderer Text:
+[{"front":"Begriff oder Frage","back":"Erklärung oder Antwort"},...]
+Decke die wichtigsten Konzepte und Fakten ab. Antworte auf Deutsch wenn das Dokument auf Deutsch ist.`;
 
-  if (mode === 'summary') {
-    return `Erstelle eine strukturierte Lernzusammenfassung aus dem Dokument.
-Verwende Markdown-Formatierung mit Überschriften (##, ###), Stichpunkten und **fett** für Schlüsselbegriffe.
-Gliedere klar nach Themen. Extrahiere die wichtigsten Punkte.
-Sei vollständig aber prägnant. Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
-  }
+  if (mode === 'summary') return `
+Erstelle eine strukturierte Lernzusammenfassung des Dokuments mit Markdown.
+Nutze ## und ### Überschriften, - Aufzählungen und **fett** für Schlüsselbegriffe.
+Gliedere klar, extrahiere Schlüsselpunkte, sei vollständig aber prägnant.
+Antworte auf Deutsch wenn das Dokument auf Deutsch ist.`;
 
-  if (mode === 'quiz') {
-    return `Erstelle 8–10 Multiple-Choice-Quizfragen aus dem Inhalt dieses Dokuments.
-Antworte NUR mit einem gültigen JSON-Array (kein Markdown, kein Text davor/danach):
-[
-  {
-    "question": "Frage?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correct": 0,
-    "explanation": "Kurze Erklärung warum diese Antwort richtig ist."
-  },
-  ...
-]
-"correct" ist der Index (0–3) der richtigen Antwort.
-Die Fragen sollen die wichtigsten Konzepte abfragen.
-Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
-  }
+  if (mode === 'quiz') return `
+Erstelle 8–10 Multiple-Choice Quizfragen aus dem Dokument.
+Antworte NUR mit einem validen JSON-Array, kein anderer Text:
+[{"question":"Frage?","options":["A","B","C","D"],"correct":0,"explanation":"Kurze Begründung."},...]
+"correct" ist der 0-basierte Index der richtigen Antwort.
+Antworte auf Deutsch wenn das Dokument auf Deutsch ist.`;
 }
 
-// ── Claude API Call ───────────────────────────────────────────────────────────
+// ── Claude API ────────────────────────────────────────────────────────────────
 async function callClaude(contentArr, systemPrompt) {
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -284,50 +541,56 @@ async function callClaude(contentArr, systemPrompt) {
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     const msg = err.error?.message || `API Fehler ${resp.status}`;
-    if (resp.status === 401) throw new Error('Ungültiger API Key. Bitte überprüfen.');
-    if (resp.status === 429) throw new Error('API Limit erreicht. Bitte warte kurz.');
+    if (resp.status === 401) throw new Error('Ungültiger API Key.');
+    if (resp.status === 429) throw new Error('API Limit erreicht – kurz warten.');
     throw new Error(msg);
   }
-
-  const data = await resp.json();
-  return data.content[0].text;
+  return (await resp.json()).content[0].text;
 }
 
-// ── Parse & Show Results ──────────────────────────────────────────────────────
+// ── Parse & Display ───────────────────────────────────────────────────────────
 function parseAndShow(raw, mode) {
+  const projectName = $('project-name-input').value.trim() || state.file?.name.replace(/\.[^.]+$/,'') || 'Projekt';
+  const fileName    = state.file?.name || 'unbekannt';
+
   if (mode === 'flashcards') {
     try {
-      const json = extractJson(raw);
-      state.flashcards = JSON.parse(json);
-      if (!state.flashcards.length) throw new Error('Keine Karten');
+      state.flashcards = JSON.parse(extractJson(raw));
+      if (!state.flashcards.length) throw new Error();
+      const project = createProject(projectName, fileName, 'flashcards', state.flashcards);
+      saveProjectToStorage(project);
+      state.currentProject = project;
       initFlashcards();
       showScreen('flashcards');
-    } catch {
-      toast('Konnte Karteikarten nicht lesen — bitte erneut versuchen', 'error');
-      showScreen('upload');
-    }
+      toast('Karteikarten erstellt & gespeichert ✓');
+    } catch { toast('Fehler beim Lesen der Karteikarten', 'error'); showScreen('upload'); }
+
   } else if (mode === 'summary') {
+    const project = createProject(projectName, fileName, 'summary', raw);
+    saveProjectToStorage(project);
+    state.currentProject = project;
     showSummary(raw);
     showScreen('summary');
+    toast('Lernzettel erstellt & gespeichert ✓');
+
   } else if (mode === 'quiz') {
     try {
-      const json = extractJson(raw);
-      state.quiz = JSON.parse(json);
-      if (!state.quiz.length) throw new Error('Kein Quiz');
+      state.quiz = JSON.parse(extractJson(raw));
+      if (!state.quiz.length) throw new Error();
+      const project = createProject(projectName, fileName, 'quiz', state.quiz);
+      saveProjectToStorage(project);
+      state.currentProject = project;
       initQuiz();
       showScreen('quiz');
-    } catch {
-      toast('Konnte Quiz nicht lesen — bitte erneut versuchen', 'error');
-      showScreen('upload');
-    }
+      toast('Quiz erstellt & gespeichert ✓');
+    } catch { toast('Fehler beim Lesen des Quiz', 'error'); showScreen('upload'); }
   }
 }
 
 function extractJson(text) {
-  const start = text.indexOf('[');
-  const end   = text.lastIndexOf(']');
-  if (start === -1 || end === -1) throw new Error('No JSON');
-  return text.slice(start, end + 1);
+  const s = text.indexOf('['), e = text.lastIndexOf(']');
+  if (s === -1 || e === -1) throw new Error('No JSON');
+  return text.slice(s, e + 1);
 }
 
 // ── Flashcards ────────────────────────────────────────────────────────────────
@@ -339,35 +602,54 @@ function initFlashcards() {
   renderFlashcard();
 }
 
+// Shuffle button
+$('fc-shuffle-btn').addEventListener('click', () => {
+  state.fcQueue = state.fcQueue.sort(() => Math.random() - .5);
+  state.fcIndex = 0;
+  toast('Karten gemischt 🔀', 'info');
+  renderFlashcard();
+});
+
 function renderFlashcard() {
   const container = $('fc-container');
+  if (!container) return;
 
   if (state.fcIndex >= state.fcQueue.length) {
-    const pct = Math.round((state.fcCorrect / state.flashcards.length) * 100);
+    const total = state.flashcards.length;
+    const pct   = Math.round((state.fcCorrect / total) * 100);
+
+    // Save stats
+    addStat('cardsLearned', state.fcCorrect);
+    if (state.currentProject) {
+      state.currentProject.stats.cardsLearned += state.fcCorrect;
+      saveProjectToStorage(state.currentProject);
+    }
+
+    const emoji = pct >= 80 ? '🎉' : pct >= 60 ? '👍' : '💪';
     container.innerHTML = `
       <div class="fc-result">
         <div class="score-ring">${pct}%</div>
-        <h2>Runde abgeschlossen!</h2>
-        <p>Du hast ${state.fcCorrect} von ${state.flashcards.length} Karten richtig beantwortet.</p>
-        <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap">
-          <button class="btn-secondary" onclick="initFlashcards()">Neu starten</button>
-          <button class="btn-primary" onclick="showScreen('upload')">Neue Datei</button>
+        <h2>${emoji} Runde abgeschlossen!</h2>
+        <p>${state.fcCorrect} von ${total} Karten gewusst.</p>
+        <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;margin-top:.5rem">
+          <button class="btn-secondary" onclick="initFlashcards()">🔄 Nochmal</button>
+          <button class="btn-primary" onclick="navTo('dashboard')">🏠 Übersicht</button>
         </div>
       </div>`;
     return;
   }
 
-  const card  = state.flashcards[state.fcQueue[state.fcIndex]];
+  const card = state.flashcards[state.fcQueue[state.fcIndex]];
+  const done = state.fcIndex;
   const total = state.flashcards.length;
-  const done  = state.fcIndex;
-  const pct   = total > 0 ? (done / total) * 100 : 0;
+  const pct  = (done / total) * 100;
   state.fcFlipped = false;
 
   container.innerHTML = `
     <div class="flashcard-progress">
       <span>${done + 1} / ${total}</span>
       <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-      <span>${state.fcCorrect} ✓</span>
+      <span style="color:var(--success)">${state.fcCorrect} ✓</span>
     </div>
 
     <div class="flashcard-scene" id="fc-scene">
@@ -384,15 +666,14 @@ function renderFlashcard() {
       </div>
     </div>
 
-    <div class="flashcard-actions" id="fc-actions" style="display:none">
-      <button class="btn-wrong" onclick="fcAnswer(false)">✗ Nochmal</button>
-      <button class="btn-secondary" onclick="fcFlip()">Zurückdrehen</button>
-      <button class="btn-correct" onclick="fcAnswer(true)">✓ Gewusst</button>
+    <div id="fc-actions" style="display:none" class="flashcard-actions">
+      <button class="btn-wrong"    onclick="fcAnswer(false)">✗ Nochmal</button>
+      <button class="btn-secondary" onclick="fcFlip()">↩ Zurück</button>
+      <button class="btn-correct"  onclick="fcAnswer(true)">✓ Gewusst</button>
     </div>
     <div id="fc-flip-hint">
       <button class="btn-primary" onclick="fcFlip()">Karte umdrehen</button>
-    </div>
-  `;
+    </div>`;
 
   $('fc-scene').addEventListener('click', fcFlip);
 }
@@ -402,7 +683,7 @@ function fcFlip() {
   if (!card) return;
   state.fcFlipped = !state.fcFlipped;
   card.classList.toggle('flipped', state.fcFlipped);
-  $('fc-actions').style.display = state.fcFlipped ? 'flex' : 'none';
+  $('fc-actions').style.display  = state.fcFlipped ? 'flex' : 'none';
   $('fc-flip-hint').style.display = state.fcFlipped ? 'none' : '';
 }
 
@@ -411,9 +692,7 @@ function fcAnswer(correct) {
     state.fcCorrect++;
     state.fcIndex++;
   } else {
-    // Put card at end of queue so it comes back
-    const idx = state.fcQueue[state.fcIndex];
-    state.fcQueue.push(idx);
+    state.fcQueue.push(state.fcQueue[state.fcIndex]);
     state.fcIndex++;
   }
   renderFlashcard();
@@ -423,35 +702,44 @@ function fcAnswer(correct) {
 function showSummary(markdown) {
   $('summary-content').innerHTML = marked.parse(markdown);
 }
-
-$('summary-export').addEventListener('click', () => {
-  window.print();
-});
+$('summary-export').addEventListener('click', () => window.print());
 
 // ── Quiz ──────────────────────────────────────────────────────────────────────
 function initQuiz() {
   state.quizIndex   = 0;
   state.quizScore   = 0;
   state.quizAnswered = false;
+  if ($('quiz-score-hdr')) $('quiz-score-hdr').textContent = '0';
   renderQuestion();
 }
 
 function renderQuestion() {
   const body = $('quiz-body');
+  if (!body) return;
 
   if (state.quizIndex >= state.quiz.length) {
-    const pct = Math.round((state.quizScore / state.quiz.length) * 100);
+    const total = state.quiz.length;
+    const pct   = Math.round((state.quizScore / total) * 100);
+
+    // Save stats
+    addStat('quizzesPlayed');
+    if (state.currentProject) {
+      state.currentProject.stats.quizPlays++;
+      const prev = state.currentProject.stats.bestScore;
+      if (prev === null || pct > prev) state.currentProject.stats.bestScore = pct;
+      saveProjectToStorage(state.currentProject);
+    }
+
     body.innerHTML = `
       <div class="quiz-result">
-        <div class="score-display">${state.quizScore}/${state.quiz.length}</div>
-        <div class="score-label">${pct}% richtig</div>
-        <div class="score-bar-wrap">
+        <div class="score-display">${state.quizScore}/${total}</div>
+        <div class="score-label">${pct}% richtig · ${scoreMsg(pct)}</div>
+        <div class="score-bar-wrap" style="margin:.75rem auto">
           <div class="score-bar-fill" style="width:0%" id="score-bar"></div>
         </div>
-        <p style="color:var(--text-muted);margin-bottom:1.5rem">${scoreMsg(pct)}</p>
-        <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap">
-          <button class="btn-secondary" onclick="initQuiz()">Quiz wiederholen</button>
-          <button class="btn-primary" onclick="showScreen('upload')">Neue Datei</button>
+        <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;margin-top:1rem">
+          <button class="btn-secondary" onclick="initQuiz()">🔄 Wiederholen</button>
+          <button class="btn-primary" onclick="navTo('dashboard')">🏠 Übersicht</button>
         </div>
       </div>`;
     setTimeout(() => {
@@ -461,7 +749,7 @@ function renderQuestion() {
     return;
   }
 
-  const q    = state.quiz[state.quizIndex];
+  const q = state.quiz[state.quizIndex];
   const letters = ['A','B','C','D'];
   state.quizAnswered = false;
 
@@ -470,7 +758,7 @@ function renderQuestion() {
       <div class="quiz-q-number">Frage ${state.quizIndex + 1} von ${state.quiz.length}</div>
       <div class="quiz-q-text">${escHtml(q.question)}</div>
       <div class="quiz-options">
-        ${q.options.map((opt, i) => `
+        ${q.options.map((opt,i) => `
           <button class="quiz-option" onclick="quizAnswer(${i})" id="opt-${i}">
             <span class="option-letter">${letters[i]}</span>
             ${escHtml(opt)}
@@ -479,37 +767,34 @@ function renderQuestion() {
       <div id="quiz-feedback"></div>
     </div>
     <div class="quiz-nav">
-      <span style="color:var(--text-muted);font-size:0.9rem">Punkte: ${state.quizScore}</span>
-    </div>
-  `;
+      <span style="color:var(--text-muted);font-size:.875rem">Punkte: <strong>${state.quizScore}</strong></span>
+    </div>`;
 }
 
 function quizAnswer(chosen) {
   if (state.quizAnswered) return;
   state.quizAnswered = true;
   const q = state.quiz[state.quizIndex];
-  const correct = q.correct;
 
   document.querySelectorAll('.quiz-option').forEach((btn, i) => {
     btn.disabled = true;
-    if (i === correct) btn.classList.add('correct');
+    if (i === q.correct) btn.classList.add('correct');
     else if (i === chosen) btn.classList.add('wrong');
   });
 
   const fb = $('quiz-feedback');
-  if (chosen === correct) {
+  if (chosen === q.correct) {
     state.quizScore++;
     fb.innerHTML = `<div class="quiz-feedback correct">✓ Richtig! ${escHtml(q.explanation || '')}</div>`;
   } else {
-    fb.innerHTML = `<div class="quiz-feedback wrong">✗ Falsch. Richtig wäre: <strong>${escHtml(q.options[correct])}</strong>. ${escHtml(q.explanation || '')}</div>`;
+    fb.innerHTML = `<div class="quiz-feedback wrong">✗ Falsch. Richtig: <strong>${escHtml(q.options[q.correct])}</strong>. ${escHtml(q.explanation || '')}</div>`;
   }
+
+  if ($('quiz-score-hdr')) $('quiz-score-hdr').textContent = state.quizScore;
 
   const nav = document.querySelector('.quiz-nav');
   const isLast = state.quizIndex === state.quiz.length - 1;
-  nav.innerHTML += `
-    <button class="btn-primary" onclick="quizNext()">
-      ${isLast ? 'Ergebnis ansehen' : 'Nächste Frage'} →
-    </button>`;
+  nav.innerHTML += `<button class="btn-primary" onclick="quizNext()">${isLast ? 'Ergebnis ansehen' : 'Nächste Frage'} →</button>`;
 }
 
 function quizNext() {
@@ -518,20 +803,15 @@ function quizNext() {
 }
 
 function scoreMsg(pct) {
-  if (pct >= 90) return 'Ausgezeichnet! Du kennst das Thema sehr gut.';
-  if (pct >= 70) return 'Gut gemacht! Ein paar Details noch wiederholen.';
-  if (pct >= 50) return 'Nicht schlecht, aber noch Luft nach oben.';
-  return 'Weitermachen! Noch mehr lernen und wiederholen.';
+  if (pct >= 90) return 'Ausgezeichnet! 🌟';
+  if (pct >= 70) return 'Gut gemacht! 👍';
+  if (pct >= 50) return 'Fast da! 💪';
+  return 'Weitermachen! 📚';
 }
 
-// ── Back Buttons ──────────────────────────────────────────────────────────────
-document.querySelectorAll('.btn-back').forEach(btn => {
-  btn.addEventListener('click', () => showScreen('upload'));
-});
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function escHtml(str) {
-  return String(str)
+function escHtml(s) {
+  return String(s)
     .replace(/&/g,'&amp;')
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;')
@@ -539,4 +819,5 @@ function escHtml(str) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-showScreen('upload');
+renderDashboard();
+showScreen('dashboard');
