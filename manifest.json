@@ -1,0 +1,16 @@
+{
+  "name": "StudyAI",
+  "short_name": "StudyAI",
+  "description": "Datei rein. In Sekunden lernbereit.",
+  "start_url": "/studyai/",
+  "display": "standalone",
+  "background_color": "#0a1628",
+  "theme_color": "#00b4d8",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=SA&backgroundColor=00b4d8",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
