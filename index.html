@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudyAI – Die smarte Lernapp</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Markdown renderer for summary view -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">Study<span>AI</span></div>
+  <button class="api-key-btn" id="api-key-btn">🔑 API Key eingeben</button>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Upload                                                        -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-upload" class="screen active">
+
+  <div class="hero">
+    <h1>Datei rein.<br><span>In Sekunden lernbereit.</span></h1>
+    <p>PDF, Word oder Bild hochladen – die KI erstellt sofort Karteikarten, Lernzettel oder ein Quiz.</p>
+  </div>
+
+  <!-- Drop Zone -->
+  <div id="upload-zone" class="upload-zone">
+    <div class="upload-icon">📂</div>
+    <h3>Datei hier reinziehen oder klicken</h3>
+    <p>Dokument auswählen um zu starten</p>
+    <div class="file-types">
+      <span class="badge">PDF</span>
+      <span class="badge">Word (.docx)</span>
+      <span class="badge">Bild</span>
+      <span class="badge">Text</span>
+    </div>
+  </div>
+  <input type="file" id="file-input" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.gif,.webp">
+
+  <!-- File Preview (hidden until file is selected) -->
+  <div id="file-preview" class="file-preview" style="display:none"></div>
+
+  <!-- Mode Selection -->
+  <div class="mode-section">
+    <h3>Was soll die KI erstellen?</h3>
+    <div class="mode-grid">
+      <div class="mode-card selected" data-mode="flashcards">
+        <div class="mode-icon">🗂️</div>
+        <h4>Karteikarten</h4>
+        <p>Begriffe &amp; Erklärungen zum Abfragen</p>
+      </div>
+      <div class="mode-card" data-mode="summary">
+        <div class="mode-icon">📝</div>
+        <h4>Lernzettel</h4>
+        <p>Strukturierte Zusammenfassung</p>
+      </div>
+      <div class="mode-card" data-mode="quiz">
+        <div class="mode-icon">🎯</div>
+        <h4>Quiz</h4>
+        <p>Multiple-Choice Abfrage</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Analyze Button -->
+  <button class="btn-primary" id="analyze-btn" disabled>
+    ⚡ Jetzt analysieren
+  </button>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Loading                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-loading" class="screen">
+  <div class="loader-ring"></div>
+  <div class="loading-text">
+    <strong>KI analysiert dein Dokument…</strong>
+    Einen Moment bitte
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Flashcards                                                    -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-flashcards" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2>🗂️ Karteikarten</h2>
+  </div>
+  <div class="flashcard-container" id="fc-container">
+    <!-- rendered by JS -->
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Summary                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-summary" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2>📝 Lernzettel</h2>
+    <button class="btn-export" id="summary-export">🖨️ Drucken / PDF</button>
+  </div>
+  <div class="summary-body">
+    <div class="summary-content" id="summary-content">
+      <!-- rendered by JS -->
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Quiz                                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-quiz" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2>🎯 Quiz</h2>
+  </div>
+  <div class="quiz-body" id="quiz-body">
+    <!-- rendered by JS -->
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- API Key Modal                                                         -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h3>🔑 Anthropic API Key</h3>
+    <p>Den API Key bekommst du unter console.anthropic.com → API Keys. Er wird nur lokal in deinem Browser gespeichert.</p>
+    <div class="input-group">
+      <label>API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-…">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modal-cancel">Abbrechen</button>
+      <button class="btn-primary" id="modal-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
