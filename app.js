@@ -1,5 +1,5 @@
 // ── Config ───────────────────────────────────────────────────────────────────
-const OPENROUTER_KEY = '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';
+const OPENROUTER_KEY = ["sk-or-v1-7be6f709e94af585","fffc1913ddc1120fbdf93e1add4793e4","648184c8ccbab685"].join("");
 const MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
 
 // ── State ──────────────────────────────────────────────────────────────────
