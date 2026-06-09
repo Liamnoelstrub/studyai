@@ -1,6 +1,9 @@
+// ── Config ───────────────────────────────────────────────────────────────────
+const OPENROUTER_KEY = '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';
+const MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  apiKey: localStorage.getItem('studyai_key') || '',
   file: null,
   fileText: '',
   mode: 'flashcards',
@@ -38,45 +41,6 @@ function toast(msg, type = 'success', duration = 3000) {
   el.className = `toast ${type} show`;
   setTimeout(() => el.classList.remove('show'), duration);
 }
-
-// ── API Key Modal ────────────────────────────────────────────────────────────
-$('api-key-btn').addEventListener('click', () => {
-  $('api-key-input').value = state.apiKey;
-  $('modal-backdrop').classList.add('open');
-});
-
-$('modal-cancel').addEventListener('click', () => {
-  $('modal-backdrop').classList.remove('open');
-});
-
-$('modal-save').addEventListener('click', () => {
-  const key = $('api-key-input').value.trim();
-  if (!key.startsWith('sk-ant-')) {
-    toast('Ungültiger API Key (muss mit sk-ant- beginnen)', 'error');
-    return;
-  }
-  state.apiKey = key;
-  localStorage.setItem('studyai_key', key);
-  $('modal-backdrop').classList.remove('open');
-  updateApiBtn();
-  toast('API Key gespeichert');
-});
-
-$('modal-backdrop').addEventListener('click', e => {
-  if (e.target === $('modal-backdrop')) $('modal-backdrop').classList.remove('open');
-});
-
-function updateApiBtn() {
-  const btn = $('api-key-btn');
-  if (state.apiKey) {
-    btn.textContent = '🔑 API Key gesetzt';
-    btn.classList.add('active');
-  } else {
-    btn.innerHTML = '🔑 API Key eingeben';
-    btn.classList.remove('active');
-  }
-}
-updateApiBtn();
 
 // ── File Upload ──────────────────────────────────────────────────────────────
 const uploadZone = $('upload-zone');
@@ -159,20 +123,15 @@ function updateAnalyzeBtn() {
 // ── Analyze ──────────────────────────────────────────────────────────────────
 $('analyze-btn').addEventListener('click', async () => {
   if (!state.file) return;
-  if (!state.apiKey) {
-    toast('Bitte zuerst den API Key eingeben', 'error');
-    $('api-key-btn').click();
-    return;
-  }
   await analyzeFile();
 });
 
 async function analyzeFile() {
   showScreen('loading');
   try {
-    const content = await buildMessageContent(state.file);
-    const prompt  = buildPrompt(state.mode);
-    const result  = await callClaude(content, prompt);
+    const text = await extractText(state.file);
+    const prompt = buildPrompt(state.mode, text);
+    const result = await callOpenRouter(prompt);
     parseAndShow(result, state.mode);
   } catch (err) {
     showScreen('upload');
@@ -181,38 +140,48 @@ async function analyzeFile() {
   }
 }
 
-// ── File → Message Content ────────────────────────────────────────────────────
-async function buildMessageContent(file) {
-  if (file.type.startsWith('image/')) {
-    const b64 = await fileToBase64(file);
-    return [
-      { type: 'image', source: { type: 'base64', media_type: file.type, data: b64 } },
-      { type: 'text', text: 'Analysiere den Inhalt dieses Dokuments/Bildes.' }
-    ];
-  }
-
+// ── Text Extraction ───────────────────────────────────────────────────────────
+async function extractText(file) {
   if (file.type === 'application/pdf') {
-    const b64 = await fileToBase64(file);
-    return [
-      {
-        type: 'document',
-        source: { type: 'base64', media_type: 'application/pdf', data: b64 }
-      },
-      { type: 'text', text: 'Analysiere den Inhalt dieses Dokuments.' }
-    ];
+    return await extractPdfText(file);
   }
-
-  // Text / DOCX — read as text
-  const text = await fileToText(file);
-  return [{ type: 'text', text: `Dokumentinhalt:\n\n${text}` }];
+  if (file.type.startsWith('image/')) {
+    // For images, return a note — Llama free tier doesn't support vision
+    return '[Bild hochgeladen — bitte nur Text-Dokumente verwenden für beste Resultate]';
+  }
+  return await fileToText(file);
 }
 
-function fileToBase64(file) {
+async function extractPdfText(file) {
+  try {
+    // Load PDF.js from CDN
+    if (!window.pdfjsLib) {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(' ') + '\n';
+    }
+    return text.trim() || 'Kein Text im PDF gefunden.';
+  } catch (e) {
+    // Fallback: read as text
+    return await fileToText(file);
+  }
+}
+
+function loadScript(src) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
   });
 }
 
@@ -226,9 +195,15 @@ function fileToText(file) {
 }
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
-function buildPrompt(mode) {
+function buildPrompt(mode, text) {
+  const truncated = text.slice(0, 12000); // Stay within token limits
+
   if (mode === 'flashcards') {
-    return `Erstelle aus dem Inhalt dieses Dokuments 10–15 Karteikarten zum Lernen.
+    return `Hier ist ein Dokument:
+
+${truncated}
+
+Erstelle 10–15 Karteikarten zum Lernen aus diesem Inhalt.
 Antworte NUR mit einem gültigen JSON-Array (kein Markdown, kein Text davor/danach):
 [
   {"front": "Begriff oder Frage", "back": "Erklärung oder Antwort"},
@@ -239,14 +214,22 @@ Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
   }
 
   if (mode === 'summary') {
-    return `Erstelle eine strukturierte Lernzusammenfassung aus dem Dokument.
+    return `Hier ist ein Dokument:
+
+${truncated}
+
+Erstelle eine strukturierte Lernzusammenfassung aus diesem Inhalt.
 Verwende Markdown-Formatierung mit Überschriften (##, ###), Stichpunkten und **fett** für Schlüsselbegriffe.
 Gliedere klar nach Themen. Extrahiere die wichtigsten Punkte.
 Sei vollständig aber prägnant. Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
   }
 
   if (mode === 'quiz') {
-    return `Erstelle 8–10 Multiple-Choice-Quizfragen aus dem Inhalt dieses Dokuments.
+    return `Hier ist ein Dokument:
+
+${truncated}
+
+Erstelle 8–10 Multiple-Choice-Quizfragen aus diesem Inhalt.
 Antworte NUR mit einem gültigen JSON-Array (kein Markdown, kein Text davor/danach):
 [
   {
@@ -254,43 +237,40 @@ Antworte NUR mit einem gültigen JSON-Array (kein Markdown, kein Text davor/dana
     "options": ["Option A", "Option B", "Option C", "Option D"],
     "correct": 0,
     "explanation": "Kurze Erklärung warum diese Antwort richtig ist."
-  },
-  ...
+  }
 ]
 "correct" ist der Index (0–3) der richtigen Antwort.
-Die Fragen sollen die wichtigsten Konzepte abfragen.
 Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
   }
 }
 
-// ── Claude API Call ───────────────────────────────────────────────────────────
-async function callClaude(contentArr, systemPrompt) {
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+// ── OpenRouter API Call ───────────────────────────────────────────────────────
+async function callOpenRouter(prompt) {
+  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': state.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'Authorization': `Bearer ${OPENROUTER_KEY}`,
+      'HTTP-Referer': 'https://liamnoelstrub.github.io/studyai',
+      'X-Title': 'StudyAI',
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-8',
+      model: MODEL,
       max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: contentArr }],
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     const msg = err.error?.message || `API Fehler ${resp.status}`;
-    if (resp.status === 401) throw new Error('Ungültiger API Key. Bitte überprüfen.');
-    if (resp.status === 429) throw new Error('API Limit erreicht. Bitte warte kurz.');
+    if (resp.status === 401) throw new Error('API Key ungültig.');
+    if (resp.status === 429) throw new Error('Zu viele Anfragen. Bitte warte kurz.');
     throw new Error(msg);
   }
 
   const data = await resp.json();
-  return data.content[0].text;
+  return data.choices[0].message.content;
 }
 
 // ── Parse & Show Results ──────────────────────────────────────────────────────
@@ -411,7 +391,6 @@ function fcAnswer(correct) {
     state.fcCorrect++;
     state.fcIndex++;
   } else {
-    // Put card at end of queue so it comes back
     const idx = state.fcQueue[state.fcIndex];
     state.fcQueue.push(idx);
     state.fcIndex++;
