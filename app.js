@@ -16,6 +16,10 @@ const state = {
   quizIndex: 0,
   quizScore: 0,
   quizAnswered: false,
+  summaryMarkdown: '',   // raw markdown of the current summary (for saving)
+  sourceName: '',        // filename of the analysed document
+  backTarget: 'upload',  // where the ← Zurück button returns to
+  pendingSaveMode: null, // mode being saved while the save modal is open
 };
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -26,6 +30,7 @@ const screens = {
   flashcards: $('screen-flashcards'),
   summary:    $('screen-summary'),
   quiz:       $('screen-quiz'),
+  library:    $('screen-library'),
 };
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -128,6 +133,8 @@ $('analyze-btn').addEventListener('click', async () => {
 
 async function analyzeFile() {
   showScreen('loading');
+  state.sourceName = state.file?.name || '';
+  state.backTarget = 'upload';
   try {
     const text = await extractText(state.file);
     const prompt = buildPrompt(state.mode, text);
@@ -287,6 +294,7 @@ function parseAndShow(raw, mode) {
       showScreen('upload');
     }
   } else if (mode === 'summary') {
+    state.summaryMarkdown = raw;
     showSummary(raw);
     showScreen('summary');
   } else if (mode === 'quiz') {
@@ -504,8 +512,13 @@ function scoreMsg(pct) {
 }
 
 // ── Back Buttons ──────────────────────────────────────────────────────────────
+function goBack() {
+  const active = Object.keys(screens).find(k => screens[k].classList.contains('active'));
+  if (active === 'library') { showScreen('upload'); return; }
+  showScreen(state.backTarget || 'upload');
+}
 document.querySelectorAll('.btn-back').forEach(btn => {
-  btn.addEventListener('click', () => showScreen('upload'));
+  btn.addEventListener('click', goBack);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -516,6 +529,216 @@ function escHtml(str) {
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Bibliothek (Stage 1) — lokale Speicherung von Lernsets
+// ══════════════════════════════════════════════════════════════════════════════
+const LIB_KEY = 'studyai_library_v1';
+const LAST_SUBJECT_KEY = 'studyai_last_subject';
+
+const MODE_INFO = {
+  flashcards: { icon: '🗂️', label: 'Karteikarten' },
+  summary:    { icon: '📝', label: 'Lernzettel' },
+  quiz:       { icon: '🎯', label: 'Quiz' },
+};
+
+function loadLibrary() {
+  try {
+    return JSON.parse(localStorage.getItem(LIB_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function persistLibrary(sets) {
+  try {
+    localStorage.setItem(LIB_KEY, JSON.stringify(sets));
+    return true;
+  } catch (e) {
+    toast('Speicher voll oder nicht verfügbar', 'error');
+    return false;
+  }
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function getSubjects() {
+  return [...new Set(loadLibrary().map(s => s.subject).filter(Boolean))];
+}
+
+// ── Speichern-Ablauf ──────────────────────────────────────────────────────────
+const saveBackdrop = $('save-backdrop');
+
+function hasContent(mode) {
+  if (mode === 'flashcards') return state.flashcards.length > 0;
+  if (mode === 'quiz')       return state.quiz.length > 0;
+  if (mode === 'summary')    return !!state.summaryMarkdown;
+  return false;
+}
+
+function openSaveModal(mode) {
+  if (!hasContent(mode)) {
+    toast('Nichts zum Speichern vorhanden', 'error');
+    return;
+  }
+  state.pendingSaveMode = mode;
+
+  // Titel-Vorschlag aus Dateiname
+  const baseName = (state.sourceName || '').replace(/\.[^.]+$/, '').trim();
+  $('save-title').value = baseName || MODE_INFO[mode].label;
+  $('save-subject').value = localStorage.getItem(LAST_SUBJECT_KEY) || '';
+
+  // Fach-Vorschläge aus vorhandenen Sets
+  $('subject-list').innerHTML = getSubjects()
+    .map(s => `<option value="${escHtml(s)}">`).join('');
+
+  saveBackdrop.classList.add('open');
+  $('save-title').focus();
+  $('save-title').select();
+}
+
+function closeSaveModal() {
+  saveBackdrop.classList.remove('open');
+  state.pendingSaveMode = null;
+}
+
+function confirmSave() {
+  const mode = state.pendingSaveMode;
+  if (!mode) return;
+
+  const title = $('save-title').value.trim() || MODE_INFO[mode].label;
+  const subject = $('save-subject').value.trim() || 'Allgemein';
+
+  const set = {
+    id: genId(),
+    title,
+    subject,
+    mode,
+    createdAt: Date.now(),
+    sourceName: state.sourceName || '',
+    flashcards: mode === 'flashcards' ? state.flashcards : null,
+    quiz:       mode === 'quiz'       ? state.quiz       : null,
+    summary:    mode === 'summary'    ? state.summaryMarkdown : null,
+  };
+
+  const lib = loadLibrary();
+  lib.push(set);
+  if (persistLibrary(lib)) {
+    localStorage.setItem(LAST_SUBJECT_KEY, subject);
+    closeSaveModal();
+    toast('In Bibliothek gespeichert ✓', 'success');
+  }
+}
+
+document.querySelectorAll('.btn-save').forEach(btn => {
+  btn.addEventListener('click', () => openSaveModal(btn.dataset.mode));
+});
+$('save-cancel').addEventListener('click', closeSaveModal);
+$('save-confirm').addEventListener('click', confirmSave);
+saveBackdrop.addEventListener('click', e => {
+  if (e.target === saveBackdrop) closeSaveModal();
+});
+$('save-title').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmSave();
+});
+
+// ── Bibliothek rendern ──────────────────────────────────────────────────────────
+function renderLibrary() {
+  const grid = $('library-grid');
+  const sets = loadLibrary().sort((a, b) => b.createdAt - a.createdAt);
+
+  if (!sets.length) {
+    grid.innerHTML = `
+      <div class="library-empty">
+        <div class="empty-icon">📚</div>
+        <h3>Noch keine Lernsets gespeichert</h3>
+        <p>Analysiere ein Dokument und tippe auf „💾 Speichern", um es hier abzulegen.</p>
+        <button class="btn-primary" onclick="showScreen('upload')">⚡ Dokument analysieren</button>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = sets.map(set => {
+    const info = MODE_INFO[set.mode] || { icon: '📄', label: 'Lernset' };
+    let count = info.label;
+    if (set.mode === 'flashcards') count = `${set.flashcards?.length || 0} Karten`;
+    else if (set.mode === 'quiz')  count = `${set.quiz?.length || 0} Fragen`;
+    else if (set.mode === 'summary') count = 'Zusammenfassung';
+
+    const date = new Date(set.createdAt).toLocaleDateString('de-CH', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    });
+
+    return `
+      <div class="library-card" data-id="${set.id}">
+        <button class="lib-card-delete" data-del="${set.id}" title="Löschen">🗑️</button>
+        <div class="lib-card-top">
+          <div class="lib-card-icon">${info.icon}</div>
+          <div class="lib-card-titles">
+            <div class="lib-card-title">${escHtml(set.title)}</div>
+            <div class="lib-card-type">${escHtml(info.label)} · ${escHtml(count)}</div>
+          </div>
+        </div>
+        <div class="lib-card-meta">
+          <span class="subject-badge">${escHtml(set.subject)}</span>
+          <span class="lib-card-date">${date}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Karten anklickbar machen
+  grid.querySelectorAll('.library-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.lib-card-delete')) return;
+      openSet(card.dataset.id);
+    });
+  });
+  grid.querySelectorAll('.lib-card-delete').forEach(btn => {
+    btn.addEventListener('click', () => deleteSet(btn.dataset.del));
+  });
+}
+
+function openSet(id) {
+  const set = loadLibrary().find(s => s.id === id);
+  if (!set) { toast('Lernset nicht gefunden', 'error'); return; }
+
+  state.backTarget = 'library';
+  state.sourceName = set.sourceName || '';
+
+  if (set.mode === 'flashcards') {
+    state.flashcards = set.flashcards || [];
+    initFlashcards();
+    showScreen('flashcards');
+  } else if (set.mode === 'quiz') {
+    state.quiz = set.quiz || [];
+    initQuiz();
+    showScreen('quiz');
+  } else if (set.mode === 'summary') {
+    state.summaryMarkdown = set.summary || '';
+    showSummary(state.summaryMarkdown);
+    showScreen('summary');
+  }
+}
+
+function deleteSet(id) {
+  const set = loadLibrary().find(s => s.id === id);
+  if (!set) return;
+  if (!confirm(`„${set.title}" wirklich löschen?`)) return;
+  const lib = loadLibrary().filter(s => s.id !== id);
+  persistLibrary(lib);
+  renderLibrary();
+  toast('Lernset gelöscht', 'success');
+}
+
+// ── Header-Navigation ─────────────────────────────────────────────────────────
+$('logo-home').addEventListener('click', () => showScreen('upload'));
+$('nav-library').addEventListener('click', () => {
+  renderLibrary();
+  showScreen('library');
+});
+$('lib-new').addEventListener('click', () => showScreen('upload'));
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 showScreen('upload');

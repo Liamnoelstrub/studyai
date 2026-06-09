@@ -17,8 +17,11 @@
 
 <!-- ── Header ──────────────────────────────────────────────────────────── -->
 <header>
-  <div class="logo">Study<span>AI</span></div>
-  <button class="api-key-btn" id="api-key-btn">🔑 API Key eingeben</button>
+  <div class="logo" id="logo-home" title="Zur Startseite">Study<span>AI</span></div>
+  <div class="header-actions">
+    <button class="api-key-btn" id="nav-library">📚 Bibliothek</button>
+    <button class="api-key-btn" id="api-key-btn">🔑 API Key</button>
+  </div>
 </header>
 
 <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -95,6 +98,7 @@
   <div class="result-header">
     <button class="btn-secondary btn-back">← Zurück</button>
     <h2>🗂️ Karteikarten</h2>
+    <button class="btn-export btn-save" data-mode="flashcards">💾 Speichern</button>
   </div>
   <div class="flashcard-container" id="fc-container">
     <!-- rendered by JS -->
@@ -108,6 +112,7 @@
   <div class="result-header">
     <button class="btn-secondary btn-back">← Zurück</button>
     <h2>📝 Lernzettel</h2>
+    <button class="btn-export btn-save" data-mode="summary">💾 Speichern</button>
     <button class="btn-export" id="summary-export">🖨️ Drucken / PDF</button>
   </div>
   <div class="summary-body">
@@ -124,9 +129,26 @@
   <div class="result-header">
     <button class="btn-secondary btn-back">← Zurück</button>
     <h2>🎯 Quiz</h2>
+    <button class="btn-export btn-save" data-mode="quiz">💾 Speichern</button>
   </div>
   <div class="quiz-body" id="quiz-body">
     <!-- rendered by JS -->
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Library                                                       -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-library" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2>📚 Meine Bibliothek</h2>
+    <button class="btn-export" id="lib-new">+ Neues Lernset</button>
+  </div>
+  <div class="library-body">
+    <div class="library-grid" id="library-grid">
+      <!-- rendered by JS -->
+    </div>
   </div>
 </main>
 
@@ -144,6 +166,27 @@
     <div class="modal-actions">
       <button class="btn-secondary" id="modal-cancel">Abbrechen</button>
       <button class="btn-primary" id="modal-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Save Modal -->
+<div class="modal-backdrop" id="save-backdrop">
+  <div class="modal">
+    <h3>💾 Lernset speichern</h3>
+    <p>Das Lernset wird lokal in deinem Browser gespeichert und bleibt in deiner Bibliothek verfügbar.</p>
+    <div class="input-group">
+      <label>Titel</label>
+      <input type="text" id="save-title" placeholder="z.B. Biologie Kapitel 3">
+    </div>
+    <div class="input-group">
+      <label>Fach</label>
+      <input type="text" id="save-subject" placeholder="z.B. Biologie" list="subject-list">
+      <datalist id="subject-list"></datalist>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="save-cancel">Abbrechen</button>
+      <button class="btn-primary" id="save-confirm">Speichern</button>
     </div>
   </div>
 </div>
