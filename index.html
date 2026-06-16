@@ -19,6 +19,7 @@
 <header>
   <div class="logo" id="logo-home" title="Zur Startseite">Study<span>AI</span></div>
   <div class="header-actions">
+    <button class="api-key-btn" id="nav-projects">📁 Projekte</button>
     <button class="api-key-btn" id="nav-plan">📅 Lernplan</button>
     <button class="api-key-btn" id="nav-library">📚 Bibliothek</button>
     <button class="api-key-btn icon-only" id="nav-timer" title="Lern-Timer">⏱️</button>
@@ -184,6 +185,73 @@
   </div>
   <div class="plan-body" id="plan-body"><!-- rendered by JS --></div>
 </main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Projekte (Übersicht)                                          -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-projects" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2>📁 Projekte</h2>
+    <button class="btn-export" id="project-new-btn">+ Neues Projekt</button>
+  </div>
+  <div class="projects-body">
+    <div class="projects-grid" id="projects-grid"><!-- JS --></div>
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Projekt-Detail                                                 -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-project-detail" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2 id="project-detail-title">Projekt</h2>
+    <button class="btn-export" id="project-ai-plan-btn">🤖 KI-Lernplan</button>
+  </div>
+  <div class="project-detail-body" id="project-detail-body"><!-- JS --></div>
+</main>
+
+<!-- Neues Projekt Modal -->
+<div class="modal-backdrop" id="project-backdrop">
+  <div class="modal">
+    <h3>📁 Neues Projekt</h3>
+    <p>Ein Projekt ist z.B. eine bevorstehende Prüfung mit allem was du dafür brauchst.</p>
+    <div class="input-group">
+      <label>Projektname</label>
+      <input type="text" id="project-name" placeholder="z.B. Mathe Prüfung Q3">
+    </div>
+    <div class="input-group">
+      <label>Fach</label>
+      <input type="text" id="project-subject" placeholder="z.B. Mathematik" list="project-subject-list">
+      <datalist id="project-subject-list"></datalist>
+    </div>
+    <div class="input-group">
+      <label>Prüfungsdatum</label>
+      <input type="date" id="project-date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="project-cancel">Abbrechen</button>
+      <button class="btn-primary"   id="project-confirm">Erstellen</button>
+    </div>
+  </div>
+</div>
+
+<!-- KI-Lernplan Modal -->
+<div class="modal-backdrop" id="ai-plan-backdrop">
+  <div class="modal ai-plan-modal">
+    <h3>🤖 KI-Lernplan</h3>
+    <div id="ai-plan-content">
+      <div class="ai-plan-loading">
+        <div class="spinner"></div>
+        <p>KI analysiert deine Fortschritte und erstellt einen persönlichen Lernplan…</p>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:1rem">
+      <button class="btn-primary" id="ai-plan-close">Schliessen</button>
+    </div>
+  </div>
+</div>
 
 <!-- Lernplan Modal -->
 <div class="modal-backdrop" id="plan-backdrop">
