@@ -19,7 +19,9 @@
 <header>
   <div class="logo" id="logo-home" title="Zur Startseite">Study<span>AI</span></div>
   <div class="header-actions">
+    <button class="api-key-btn" id="nav-plan">📅 Lernplan</button>
     <button class="api-key-btn" id="nav-library">📚 Bibliothek</button>
+    <button class="api-key-btn icon-only" id="nav-timer" title="Lern-Timer">⏱️</button>
     <button class="api-key-btn" id="api-key-btn">🔑 API Key</button>
   </div>
 </header>
@@ -145,6 +147,7 @@
     <h2>📚 Meine Bibliothek</h2>
     <button class="btn-export" id="lib-new">+ Neues Lernset</button>
   </div>
+  <div id="library-filter-bar" class="library-filter-bar"></div>
   <div class="library-body">
     <div class="library-grid" id="library-grid">
       <!-- rendered by JS -->
@@ -170,6 +173,37 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<!-- Screen: Lernplan                                                      -->
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<main id="screen-plan" class="screen">
+  <div class="result-header">
+    <button class="btn-secondary btn-back">← Zurück</button>
+    <h2>📅 Lernplan</h2>
+    <button class="btn-export" id="plan-add-btn">+ Ziel hinzufügen</button>
+  </div>
+  <div class="plan-body" id="plan-body"><!-- rendered by JS --></div>
+</main>
+
+<!-- Lernplan Modal -->
+<div class="modal-backdrop" id="plan-backdrop">
+  <div class="modal">
+    <h3>📅 Lernziel hinzufügen</h3>
+    <div class="input-group">
+      <label>Titel</label>
+      <input type="text" id="plan-title" placeholder="z.B. Biologie Kapitel 3 wiederholen">
+    </div>
+    <div class="input-group">
+      <label>Fällig bis</label>
+      <input type="date" id="plan-date">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="plan-cancel">Abbrechen</button>
+      <button class="btn-primary"   id="plan-confirm">Hinzufügen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Save Modal -->
 <div class="modal-backdrop" id="save-backdrop">
   <div class="modal">
@@ -188,6 +222,24 @@
       <button class="btn-secondary" id="save-cancel">Abbrechen</button>
       <button class="btn-primary" id="save-confirm">Speichern</button>
     </div>
+  </div>
+</div>
+
+<!-- Timer Panel -->
+<div id="timer-panel" class="timer-panel" style="display:none">
+  <div class="timer-header">
+    <span id="timer-mode-label">🍅 Lernen</span>
+    <button id="timer-close" class="timer-close-btn">✕</button>
+  </div>
+  <div class="timer-display" id="timer-display">25:00</div>
+  <div class="timer-modes">
+    <button class="timer-mode-btn active" data-minutes="25">Lernen</button>
+    <button class="timer-mode-btn" data-minutes="5">Kurze Pause</button>
+    <button class="timer-mode-btn" data-minutes="10">Lange Pause</button>
+  </div>
+  <div class="timer-controls">
+    <button class="btn-secondary" id="timer-reset">↺ Reset</button>
+    <button class="btn-primary"   id="timer-toggle">▶ Start</button>
   </div>
 </div>
 
