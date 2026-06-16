@@ -28,13 +28,15 @@ const state = {
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const screens = {
-  upload:     $('screen-upload'),
-  loading:    $('screen-loading'),
-  flashcards: $('screen-flashcards'),
-  summary:    $('screen-summary'),
-  quiz:       $('screen-quiz'),
-  library:    $('screen-library'),
-  plan:       $('screen-plan'),
+  upload:          $('screen-upload'),
+  loading:         $('screen-loading'),
+  flashcards:      $('screen-flashcards'),
+  summary:         $('screen-summary'),
+  quiz:            $('screen-quiz'),
+  library:         $('screen-library'),
+  plan:            $('screen-plan'),
+  projects:        $('screen-projects'),
+  'project-detail':$('screen-project-detail'),
 };
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -575,6 +577,8 @@ function scoreMsg(pct) {
 function goBack() {
   const active = Object.keys(screens).find(k => screens[k].classList.contains('active'));
   if (active === 'library' || active === 'plan') { showScreen('upload'); return; }
+  if (active === 'projects') { showScreen('upload'); return; }
+  if (active === 'project-detail') { renderProjects(); showScreen('projects'); return; }
   showScreen(state.backTarget || 'upload');
 }
 document.querySelectorAll('.btn-back').forEach(btn => {
@@ -1109,6 +1113,432 @@ function formatPlanDate(iso) {
 $('nav-plan').addEventListener('click', () => {
   renderPlan();
   showScreen('plan');
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Projekte (Stage A)
+// ══════════════════════════════════════════════════════════════════════════════
+const PROJECTS_KEY = 'studyai_projects_v1';
+
+function loadProjects() {
+  try { return JSON.parse(localStorage.getItem(PROJECTS_KEY)) || []; } catch { return []; }
+}
+function persistProjects(p) {
+  try { localStorage.setItem(PROJECTS_KEY, JSON.stringify(p)); }
+  catch { toast('Speicher voll', 'error'); }
+}
+
+// ── Hilfsfunktionen ───────────────────────────────────────────────────────────
+function daysUntil(iso) {
+  if (!iso) return null;
+  const diff = new Date(iso) - new Date(new Date().toDateString());
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function projectProgress(project) {
+  const lib = loadLibrary();
+  const sets = (project.setIds || []).map(id => lib.find(s => s.id === id)).filter(Boolean);
+  if (!sets.length) return { pct: 0, studied: 0, total: 0, avgScore: null };
+  let studied = 0; let scoreSum = 0; let scoreCount = 0;
+  sets.forEach(s => {
+    const stats = s.stats || {};
+    const runs = s.mode === 'quiz'
+      ? (stats.quizRuns || [])
+      : (stats.flashcardRuns || []);
+    if (runs.length) {
+      studied++;
+      const last = runs[runs.length - 1];
+      const score = s.mode === 'quiz'
+        ? (last.score / last.total)
+        : (last.correct / last.total);
+      scoreSum += score; scoreCount++;
+    }
+  });
+  const pct = Math.round((studied / sets.length) * 100);
+  const avgScore = scoreCount ? Math.round((scoreSum / scoreCount) * 100) : null;
+  return { pct, studied, total: sets.length, avgScore };
+}
+
+// ── Projekte-Übersicht rendern ─────────────────────────────────────────────────
+function renderProjects() {
+  const grid = $('projects-grid');
+  const projects = loadProjects().sort((a, b) => (a.examDate || '').localeCompare(b.examDate || ''));
+
+  if (!projects.length) {
+    grid.innerHTML = `
+      <div class="projects-empty">
+        <div class="empty-icon">📁</div>
+        <h3>Noch keine Projekte</h3>
+        <p>Erstelle ein Projekt für deine nächste Prüfung – mit allen Lernsets und einem KI-Lernplan.</p>
+        <button class="btn-primary" onclick="openProjectModal()" style="margin:1.5rem auto 0;display:inline-flex">
+          + Erstes Projekt erstellen
+        </button>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = projects.map(p => {
+    const prog = projectProgress(p);
+    const days = daysUntil(p.examDate);
+    let dateHtml = '';
+    if (days !== null) {
+      const cls = days < 0 ? 'overdue' : days <= 3 ? 'urgent' : '';
+      const label = days < 0 ? `${Math.abs(days)} Tage überfällig` :
+                    days === 0 ? 'Heute!' :
+                    `noch ${days} Tag${days === 1 ? '' : 'e'}`;
+      dateHtml = `<div class="project-exam-date ${cls}">📅 Prüfung: ${formatPlanDate(p.examDate)} · ${label}</div>`;
+    }
+    const scoreHtml = prog.avgScore !== null
+      ? ` · Ø ${prog.avgScore}%`
+      : '';
+    return `
+      <div class="project-card" data-pid="${p.id}">
+        <button class="project-card-delete" data-del="${p.id}" title="Löschen">🗑️</button>
+        <div class="project-card-top">
+          <div class="project-card-icon">📁</div>
+          <div class="project-card-titles">
+            <div class="project-card-name">${escHtml(p.name)}</div>
+            <div class="project-card-sub">${escHtml(p.subject || '')}${scoreHtml}</div>
+          </div>
+        </div>
+        ${dateHtml}
+        <div class="project-progress-wrap">
+          <div class="project-progress-label">
+            <span>${prog.studied}/${prog.total} Sets geübt</span>
+            <span>${prog.pct}%</span>
+          </div>
+          <div class="project-progress-bar">
+            <div class="project-progress-fill" style="width:${prog.pct}%"></div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.project-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.project-card-delete')) return;
+      openProjectDetail(card.dataset.pid);
+    });
+  });
+  grid.querySelectorAll('.project-card-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = loadProjects().find(x => x.id === btn.dataset.del);
+      if (!p || !confirm(`Projekt „${p.name}" wirklich löschen?`)) return;
+      persistProjects(loadProjects().filter(x => x.id !== btn.dataset.del));
+      renderProjects();
+      toast('Projekt gelöscht', 'success');
+    });
+  });
+}
+
+// ── Projekt-Modal (erstellen) ─────────────────────────────────────────────────
+const projectBackdrop = $('project-backdrop');
+
+function openProjectModal() {
+  $('project-name').value = '';
+  $('project-subject').value = localStorage.getItem(LAST_SUBJECT_KEY) || '';
+  $('project-date').value = '';
+  $('project-subject-list').innerHTML = getSubjects()
+    .map(s => `<option value="${escHtml(s)}">`).join('');
+  projectBackdrop.classList.add('open');
+  $('project-name').focus();
+}
+function closeProjectModal() { projectBackdrop.classList.remove('open'); }
+
+$('project-new-btn').addEventListener('click', openProjectModal);
+$('project-cancel').addEventListener('click', closeProjectModal);
+projectBackdrop.addEventListener('click', e => { if (e.target === projectBackdrop) closeProjectModal(); });
+
+$('project-confirm').addEventListener('click', () => {
+  const name = $('project-name').value.trim();
+  if (!name) { toast('Bitte einen Namen eingeben', 'error'); return; }
+  const project = {
+    id: genId(),
+    name,
+    subject: $('project-subject').value.trim(),
+    examDate: $('project-date').value || null,
+    setIds: [],
+    createdAt: Date.now(),
+  };
+  const all = loadProjects();
+  all.push(project);
+  persistProjects(all);
+  closeProjectModal();
+  toast('Projekt erstellt ✓', 'success');
+  renderProjects();
+  openProjectDetail(project.id);
+});
+
+$('project-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('project-confirm').click(); });
+
+// ── Projekt-Detail ────────────────────────────────────────────────────────────
+let currentProjectId = null;
+
+function openProjectDetail(pid) {
+  currentProjectId = pid;
+  const project = loadProjects().find(p => p.id === pid);
+  if (!project) return;
+  $('project-detail-title').textContent = `📁 ${project.name}`;
+  renderProjectDetail(project);
+  showScreen('project-detail');
+}
+
+function renderProjectDetail(project) {
+  const lib    = loadLibrary();
+  const sets   = (project.setIds || []).map(id => lib.find(s => s.id === id)).filter(Boolean);
+  const prog   = projectProgress(project);
+  const days   = daysUntil(project.examDate);
+  const MODE   = { flashcards: '🗂️', quiz: '🎯', summary: '📝' };
+
+  let daysLabel = '–';
+  if (days !== null) {
+    daysLabel = days < 0 ? 'Überfällig' : days === 0 ? 'Heute!' : `${days} Tag${days === 1 ? '' : 'e'}`;
+  }
+
+  const setsHtml = sets.map(s => {
+    const stats   = s.stats || {};
+    const runs    = s.mode === 'quiz' ? (stats.quizRuns||[]) : (stats.flashcardRuns||[]);
+    const last    = runs[runs.length - 1];
+    let scoreHtml = '<span style="color:var(--text-muted)">Noch nicht geübt</span>';
+    if (last) {
+      const sc  = s.mode === 'quiz' ? last.score : last.correct;
+      const tot = s.mode === 'quiz' ? last.total : last.total;
+      const pct = Math.round((sc / tot) * 100);
+      const col = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+      scoreHtml = `<span style="color:${col}">${sc}/${tot} (${pct}%)</span>`;
+    }
+    return `
+      <div class="project-set-row" data-sid="${s.id}">
+        <div class="project-set-icon">${MODE[s.mode] || '📄'}</div>
+        <div class="project-set-info">
+          <div class="project-set-title">${escHtml(s.title)}</div>
+          <div class="project-set-meta">${escHtml(s.subject)} · ${escHtml(s.mode === 'flashcards' ? `${s.flashcards?.length||0} Karten` : s.mode === 'quiz' ? `${s.quiz?.length||0} Fragen` : 'Lernzettel')}</div>
+        </div>
+        <div class="project-set-score">${scoreHtml}</div>
+        <button class="lib-card-action-btn delete" data-remove="${s.id}" title="Entfernen">✕</button>
+      </div>`;
+  }).join('');
+
+  $('project-detail-body').innerHTML = `
+    <div class="project-stats-row">
+      <div class="project-stat-box">
+        <div class="project-stat-value">${prog.pct}%</div>
+        <div class="project-stat-label">Vorbereitung</div>
+      </div>
+      <div class="project-stat-box">
+        <div class="project-stat-value">${prog.studied}/${prog.total}</div>
+        <div class="project-stat-label">Sets geübt</div>
+      </div>
+      <div class="project-stat-box">
+        <div class="project-stat-value">${prog.avgScore !== null ? prog.avgScore + '%' : '–'}</div>
+        <div class="project-stat-label">Ø Score</div>
+      </div>
+      <div class="project-stat-box">
+        <div class="project-stat-value">${daysLabel}</div>
+        <div class="project-stat-label">bis Prüfung</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="project-section-title">Lernsets in diesem Projekt</div>
+      <div class="project-sets-list" id="project-sets-list">
+        ${setsHtml || '<p style="color:var(--text-muted);font-size:0.9rem">Noch keine Sets hinzugefügt.</p>'}
+      </div>
+      <button class="project-add-set-btn" id="project-add-set-btn" style="margin-top:0.6rem">
+        + Lernset aus Bibliothek hinzufügen
+      </button>
+    </div>`;
+
+  // Wire set click → open set for studying
+  $('project-detail-body').querySelectorAll('.project-set-row').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.closest('.lib-card-action-btn')) return;
+      openSet(row.dataset.sid);
+      state.backTarget = 'project-detail'; // override after openSet sets 'library'
+    });
+  });
+
+  // Remove set from project
+  $('project-detail-body').querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const projects = loadProjects().map(p =>
+        p.id !== currentProjectId ? p :
+        { ...p, setIds: (p.setIds||[]).filter(id => id !== btn.dataset.remove) }
+      );
+      persistProjects(projects);
+      renderProjectDetail(loadProjects().find(p => p.id === currentProjectId));
+    });
+  });
+
+  // Add set from library
+  $('project-add-set-btn').addEventListener('click', openSetPicker);
+}
+
+// ── Set-Picker ────────────────────────────────────────────────────────────────
+function openSetPicker() {
+  const project = loadProjects().find(p => p.id === currentProjectId);
+  if (!project) return;
+  const lib = loadLibrary();
+  const already = project.setIds || [];
+  const available = lib.filter(s => !already.includes(s.id));
+  const MODE_ICON = { flashcards:'🗂️', quiz:'🎯', summary:'📝' };
+
+  if (!available.length) {
+    toast('Alle Bibliotheks-Sets sind bereits im Projekt', 'success');
+    return;
+  }
+
+  // Reuse save modal as a picker
+  $('save-backdrop').querySelector('h3').textContent = '📚 Set hinzufügen';
+  $('save-backdrop').querySelector('p').textContent = 'Wähle ein oder mehrere Sets aus deiner Bibliothek:';
+
+  // Replace modal content temporarily
+  const modalEl = $('save-backdrop').querySelector('.modal');
+  const origHTML = modalEl.innerHTML;
+
+  modalEl.innerHTML = `
+    <h3>📚 Set hinzufügen</h3>
+    <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:0.75rem">
+      Klick auf ein Set um es hinzuzufügen. Mehrfachauswahl möglich.
+    </p>
+    <div class="set-picker-list" id="set-picker-list">
+      ${available.map(s => `
+        <div class="set-picker-item" data-sid="${s.id}">
+          <span>${MODE_ICON[s.mode]||'📄'}</span>
+          <div>
+            <div style="font-weight:600">${escHtml(s.title)}</div>
+            <div style="font-size:0.78rem;color:var(--text-muted)">${escHtml(s.subject)}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="modal-actions" style="margin-top:1rem">
+      <button class="btn-secondary" id="picker-cancel">Abbrechen</button>
+      <button class="btn-primary" id="picker-confirm">Hinzufügen</button>
+    </div>`;
+
+  $('save-backdrop').classList.add('open');
+  let picked = [];
+
+  modalEl.querySelectorAll('.set-picker-item').forEach(item => {
+    item.addEventListener('click', () => {
+      item.classList.toggle('picked');
+      const sid = item.dataset.sid;
+      picked = picked.includes(sid) ? picked.filter(x => x !== sid) : [...picked, sid];
+    });
+  });
+
+  $('picker-cancel').addEventListener('click', () => {
+    $('save-backdrop').classList.remove('open');
+    modalEl.innerHTML = origHTML;
+    rewireModal();
+  });
+
+  $('picker-confirm').addEventListener('click', () => {
+    if (!picked.length) { toast('Nichts ausgewählt', 'error'); return; }
+    const projects = loadProjects().map(p =>
+      p.id !== currentProjectId ? p :
+      { ...p, setIds: [...new Set([...(p.setIds||[]), ...picked])] }
+    );
+    persistProjects(projects);
+    $('save-backdrop').classList.remove('open');
+    modalEl.innerHTML = origHTML;
+    rewireModal();
+    renderProjectDetail(loadProjects().find(p => p.id === currentProjectId));
+    toast(`${picked.length} Set${picked.length > 1 ? 's' : ''} hinzugefügt ✓`, 'success');
+  });
+}
+
+function rewireModal() {
+  // Restore save-modal event listeners after innerHTML reset
+  $('save-cancel').addEventListener('click', closeSaveModal);
+  $('save-confirm').addEventListener('click', confirmSave);
+  $('save-title').addEventListener('keydown', e => { if (e.key === 'Enter') confirmSave(); });
+}
+
+// ── KI-Lernplan ───────────────────────────────────────────────────────────────
+const aiPlanBackdrop = $('ai-plan-backdrop');
+
+$('project-ai-plan-btn').addEventListener('click', generateAiPlan);
+$('ai-plan-close').addEventListener('click', () => aiPlanBackdrop.classList.remove('open'));
+aiPlanBackdrop.addEventListener('click', e => { if (e.target === aiPlanBackdrop) aiPlanBackdrop.classList.remove('open'); });
+
+async function generateAiPlan() {
+  const project = loadProjects().find(p => p.id === currentProjectId);
+  if (!project) return;
+
+  aiPlanBackdrop.classList.add('open');
+  $('ai-plan-content').innerHTML = `
+    <div class="ai-plan-loading">
+      <div class="spinner"></div>
+      <p>KI analysiert deine Fortschritte und erstellt einen persönlichen Lernplan…</p>
+    </div>`;
+
+  const lib  = loadLibrary();
+  const sets = (project.setIds||[]).map(id => lib.find(s => s.id === id)).filter(Boolean);
+  const days = daysUntil(project.examDate);
+
+  // Build context for AI
+  const setsSummary = sets.map(s => {
+    const stats = s.stats || {};
+    const runs  = s.mode === 'quiz' ? (stats.quizRuns||[]) : (stats.flashcardRuns||[]);
+    const last  = runs[runs.length-1];
+    let status  = 'Noch nicht geübt';
+    if (last) {
+      const sc  = s.mode === 'quiz' ? last.score : last.correct;
+      const pct = Math.round((sc / last.total) * 100);
+      status = `Letztes Ergebnis: ${pct}% (${sc}/${last.total})`;
+    }
+    return `- "${s.title}" (${s.mode}): ${status}`;
+  }).join('\n');
+
+  const prompt = `Du bist ein Lerncoach. Ein Schüler bereitet sich auf folgende Prüfung vor:
+
+Prüfung: ${project.name}
+Fach: ${project.subject || 'unbekannt'}
+Prüfungsdatum: ${project.examDate ? formatPlanDate(project.examDate) : 'unbekannt'}
+Verbleibende Tage: ${days !== null ? days : 'unbekannt'}
+
+Lernsets und aktueller Stand:
+${setsSummary || 'Noch keine Lernsets im Projekt.'}
+
+Erstelle einen konkreten, realistischen Lernplan für die verbleibende Zeit.
+Antworte NUR mit einem JSON-Array von Tages-Einträgen (maximal 7 Tage):
+[
+  {
+    "day": "Montag, 16.06.",
+    "focus": "Schwerpunkt des Tages",
+    "tasks": ["Aufgabe 1", "Aufgabe 2", "Aufgabe 3"]
+  }
+]
+Priorisiere Sets mit schlechten Ergebnissen oder noch gar nicht geübten Sets.
+Antworte auf Deutsch.`;
+
+  try {
+    const raw = await callOpenRouter(prompt);
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const plan = JSON.parse(clean);
+
+    $('ai-plan-content').innerHTML = `
+      <div class="ai-plan-result">
+        <h4>Dein persönlicher Lernplan für „${escHtml(project.name)}"</h4>
+        ${plan.map(day => `
+          <div class="ai-plan-day">
+            <div class="ai-plan-day-title">📅 ${escHtml(day.day)} — ${escHtml(day.focus)}</div>
+            <div class="ai-plan-day-tasks">
+              ${(day.tasks||[]).map(t => `• ${escHtml(t)}`).join('<br>')}
+            </div>
+          </div>`).join('')}
+      </div>`;
+  } catch (e) {
+    $('ai-plan-content').innerHTML = `
+      <p style="color:var(--danger)">Fehler beim Erstellen des Lernplans. Bitte versuche es erneut.</p>`;
+  }
+}
+
+// ── Nav-Button ────────────────────────────────────────────────────────────────
+$('nav-projects').addEventListener('click', () => {
+  renderProjects();
+  showScreen('projects');
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
