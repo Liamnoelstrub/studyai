@@ -1339,3 +1339,224 @@ header {
   .plan-body { padding: 1rem; }
   .header-actions .api-key-btn:not(.icon-only) { padding: 0.35rem 0.55rem; font-size: 0.78rem; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Projekte (Stage A)
+══════════════════════════════════════════════════════════════════════════════ */
+#screen-projects,
+#screen-project-detail { padding: 0; }
+
+.projects-body {
+  flex: 1;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+/* ── Projekt-Karte ── */
+.project-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1.4rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+}
+.project-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+.project-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+.project-card-icon { font-size: 2rem; flex-shrink: 0; }
+.project-card-titles { flex: 1; min-width: 0; }
+.project-card-name  { font-weight: 700; font-size: 1.08rem; word-break: break-word; }
+.project-card-sub   { color: var(--text-muted); font-size: 0.82rem; margin-top: 0.2rem; }
+
+.project-exam-date {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.project-exam-date.urgent { color: #fb923c; font-weight: 600; }
+.project-exam-date.overdue { color: var(--danger); font-weight: 600; }
+
+/* ── Fortschrittsbalken ── */
+.project-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.project-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.project-progress-bar {
+  height: 6px;
+  background: var(--bg-panel);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.project-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+  border-radius: 99px;
+  transition: width 0.6s ease;
+}
+
+.project-card-delete {
+  position: absolute;
+  top: 0.6rem; right: 0.7rem;
+  background: none; border: none;
+  color: var(--text-muted); cursor: pointer;
+  font-size: 0.95rem; padding: 0.25rem 0.4rem;
+  border-radius: 6px; transition: all 0.2s;
+}
+.project-card-delete:hover { background: rgba(239,68,68,.12); color: var(--danger); }
+
+/* ── Projekt-Detail ── */
+.project-detail-body {
+  flex: 1;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.project-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+.project-stat-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  text-align: center;
+}
+.project-stat-value { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1; }
+.project-stat-label { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+.project-section-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.75rem;
+}
+
+.project-sets-list { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.project-set-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  transition: border-color 0.2s;
+  cursor: pointer;
+}
+.project-set-row:hover { border-color: var(--accent); }
+.project-set-icon { font-size: 1.3rem; flex-shrink: 0; }
+.project-set-info { flex: 1; min-width: 0; }
+.project-set-title { font-weight: 600; font-size: 0.95rem; }
+.project-set-meta  { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.1rem; }
+.project-set-score { font-size: 0.82rem; font-weight: 700; flex-shrink: 0; }
+
+.project-add-set-btn {
+  border: 2px dashed var(--border);
+  background: none;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  width: 100%;
+  text-align: left;
+}
+.project-add-set-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Set-Auswahl Dropdown ── */
+.set-picker-list {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.set-picker-item {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  transition: border-color 0.18s;
+  font-size: 0.9rem;
+}
+.set-picker-item:hover  { border-color: var(--accent); }
+.set-picker-item.picked { border-color: var(--accent); background: rgba(0,180,216,.08); }
+
+/* ── KI-Lernplan Modal ── */
+.ai-plan-modal { max-width: 560px; }
+.ai-plan-loading { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2rem 0; }
+.ai-plan-loading p { color: var(--text-muted); text-align: center; }
+
+.ai-plan-result { display: flex; flex-direction: column; gap: 1rem; }
+.ai-plan-result h4 { color: var(--accent); margin-bottom: 0.25rem; }
+
+.ai-plan-day {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+.ai-plan-day-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
+}
+.ai-plan-day-tasks { color: var(--text); font-size: 0.9rem; line-height: 1.6; }
+
+.projects-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 4rem 1rem;
+}
+.projects-empty .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+.projects-empty h3 { color: var(--text); margin-bottom: 0.5rem; }
+
+@media (max-width: 600px) {
+  .projects-body, .project-detail-body { padding: 1rem; }
+  .projects-grid { grid-template-columns: 1fr; }
+  .project-stats-row { grid-template-columns: repeat(2, 1fr); }
+}
