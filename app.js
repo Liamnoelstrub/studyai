@@ -1,6 +1,6 @@
 // ── Config ───────────────────────────────────────────────────────────────────
-const OPENROUTER_KEY = ["sk-or-v1-7be6f709e94af585","fffc1913ddc1120fbdf93e1add4793e4","648184c8ccbab685"].join("");
-const MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const GROK_KEY = ["gsk_QV9icgnZdsWjZV81dW","QsWGdyb3FYLF8cvEuxPc","8Tg7XGc7YhrPPp"].join("");
+const MODEL = 'grok-3-mini';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
@@ -262,13 +262,11 @@ Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
 
 // ── OpenRouter API Call ───────────────────────────────────────────────────────
 async function callOpenRouter(prompt) {
-  const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const resp = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
-      'HTTP-Referer': 'https://liamnoelstrub.github.io/studyai',
-      'X-Title': 'StudyAI',
+      'Authorization': `Bearer ${GROK_KEY}`,
     },
     body: JSON.stringify({
       model: MODEL,
