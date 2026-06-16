@@ -1,6 +1,6 @@
 // ── Config ───────────────────────────────────────────────────────────────────
 const GROK_KEY = ["gsk_QV9icgnZdsWjZV81dW","QsWGdyb3FYLF8cvEuxPc","8Tg7XGc7YhrPPp"].join("");
-const MODEL = 'grok-3-mini';
+const MODEL = 'grok-4.3';
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
