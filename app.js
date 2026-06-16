@@ -159,11 +159,24 @@ async function extractText(file) {
   if (file.type === 'application/pdf') {
     return await extractPdfText(file);
   }
+  if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || file.name.endsWith('.docx')) {
+    return await extractDocxText(file);
+  }
   if (file.type.startsWith('image/')) {
-    // For images, return a note — Llama free tier doesn't support vision
     return '[Bild hochgeladen — bitte nur Text-Dokumente verwenden für beste Resultate]';
   }
   return await fileToText(file);
+}
+
+async function extractDocxText(file) {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value.trim() || 'Kein Text im Dokument gefunden.';
+  } catch (e) {
+    throw new Error('Word-Dokument konnte nicht gelesen werden: ' + e.message);
+  }
 }
 
 async function extractPdfText(file) {
