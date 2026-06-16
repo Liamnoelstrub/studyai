@@ -1,6 +1,6 @@
 // Bei jedem Deploy mit geänderten Dateien die Version erhöhen (v2 -> v3 ...),
 // damit der neue Service Worker frische Dateien lädt und alte Caches löscht.
-const CACHE = 'studyai-v7';
+const CACHE = 'studyai-v8';
 const FILES = ['/studyai/', '/studyai/index.html', '/studyai/style.css', '/studyai/app.js'];
 
 // Installieren: frische Dateien cachen und sofort übernehmen
