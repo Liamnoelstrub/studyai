@@ -1031,3 +1031,311 @@ header {
   .header-actions { gap: 0.4rem; }
   .api-key-btn { padding: 0.4rem 0.7rem; font-size: 0.8rem; }
 }
+
+/* ── Library Filter Bar (Stage 2: Fächer) ── */
+.library-filter-bar {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 1.25rem 2rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.library-filter-bar:empty { display: none; }
+
+.filter-pill {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 0.35rem 1rem;
+  border-radius: 99px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+
+.filter-pill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── Library Card Actions (edit + delete row) ── */
+.lib-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.lib-card-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0.25rem 0.35rem;
+  border-radius: 6px;
+  transition: all 0.18s;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.lib-card-action-btn:hover {
+  background: rgba(0, 180, 216, 0.12);
+  color: var(--accent);
+}
+
+.lib-card-action-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+
+@media (max-width: 600px) {
+  .library-filter-bar { padding: 1rem 1rem 0; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Stage 3 – Statistiken auf Bibliotheks-Karten
+══════════════════════════════════════════════════════════════════════════════ */
+.lib-card-stats-row {
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.lib-card-stat { font-weight: 600; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Stage 4 – Lern-Timer
+══════════════════════════════════════════════════════════════════════════════ */
+.api-key-btn.icon-only { padding: 0.4rem 0.7rem; font-size: 1.1rem; }
+
+.timer-panel {
+  position: fixed;
+  bottom: 5rem;
+  right: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1.5rem;
+  width: 240px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.timer-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  transition: color 0.2s;
+}
+.timer-close-btn:hover { color: var(--danger); }
+
+.timer-display {
+  font-size: 3rem;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 2px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.timer-modes {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.timer-mode-btn {
+  flex: 1;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 0.35rem 0.3rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+
+.timer-mode-btn:hover  { border-color: var(--accent); color: var(--accent); }
+.timer-mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+.timer-controls { display: flex; gap: 0.6rem; }
+.timer-controls .btn-secondary { flex: 1; text-align: center; padding: 0.6rem 0.5rem; }
+.timer-controls .btn-primary   { flex: 2; justify-content: center; padding: 0.6rem 0.5rem; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Stage 5 – Lernplan
+══════════════════════════════════════════════════════════════════════════════ */
+#screen-plan { padding: 0; }
+
+.plan-body {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.plan-group {}
+.plan-group-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.75rem;
+}
+
+.plan-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s;
+}
+
+.plan-item:hover { border-color: var(--accent); }
+.plan-item.completed { opacity: 0.45; }
+
+.plan-check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.plan-item-body { flex: 1; min-width: 0; }
+.plan-item-title { font-weight: 600; word-break: break-word; }
+.plan-item-date  { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+.plan-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 4rem 1rem;
+}
+.plan-empty .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+.plan-empty h3 { color: var(--text); margin-bottom: 0.5rem; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Quiz-Erweiterungen – Wahr/Falsch + Freitext
+══════════════════════════════════════════════════════════════════════════════ */
+.quiz-type-badge {
+  font-size: 0.75rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 0.1rem 0.6rem;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* Wahr/Falsch: zwei grosse Buttons nebeneinander */
+.quiz-options-tf {
+  grid-template-columns: 1fr 1fr !important;
+}
+.quiz-option-tf {
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: center;
+  justify-content: center;
+}
+.quiz-option-tf .option-letter { display: none; }
+
+/* Freitext */
+.quiz-text-input {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.85rem 1rem;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+  margin-top: 0.5rem;
+}
+.quiz-text-input:focus { border-color: var(--accent); }
+
+.quiz-text-submit {
+  margin-top: 0.75rem;
+  justify-content: center;
+}
+
+.quiz-feedback.text-reveal {
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.text-answer-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.text-answer-content {
+  color: var(--text);
+  font-size: 0.97rem;
+  line-height: 1.5;
+}
+
+.text-answer-hint {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.text-self-assess { text-align: center; }
+.text-self-assess p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.6rem; }
+
+@media (max-width: 600px) {
+  .timer-panel { right: 0.75rem; bottom: 4.5rem; width: 220px; }
+  .plan-body { padding: 1rem; }
+  .header-actions .api-key-btn:not(.icon-only) { padding: 0.35rem 0.55rem; font-size: 0.78rem; }
+}
