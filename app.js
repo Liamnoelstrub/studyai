@@ -20,6 +20,9 @@ const state = {
   sourceName: '',        // filename of the analysed document
   backTarget: 'upload',  // where the ← Zurück button returns to
   pendingSaveMode: null, // mode being saved while the save modal is open
+  filterSubject: 'all',  // active subject filter in the library
+  editingSetId: null,    // set ID being edited (null = new save)
+  openedFromSetId: null, // set ID currently being studied (for stats recording)
 };
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -31,6 +34,7 @@ const screens = {
   summary:    $('screen-summary'),
   quiz:       $('screen-quiz'),
   library:    $('screen-library'),
+  plan:       $('screen-plan'),
 };
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -135,6 +139,7 @@ async function analyzeFile() {
   showScreen('loading');
   state.sourceName = state.file?.name || '';
   state.backTarget = 'upload';
+  state.openedFromSetId = null;
   try {
     const text = await extractText(state.file);
     const prompt = buildPrompt(state.mode, text);
@@ -236,17 +241,19 @@ Sei vollständig aber prägnant. Antworte auf Deutsch falls das Dokument auf Deu
 
 ${truncated}
 
-Erstelle 8–10 Multiple-Choice-Quizfragen aus diesem Inhalt.
+Erstelle 8–10 Quizfragen aus diesem Inhalt. Verwende eine Mischung aus drei Typen (ca. 40% mc, 30% text, 30% tf):
+
+- "mc": Multiple-Choice mit genau 4 Optionen
+- "tf": Wahr/Falsch mit genau 2 Optionen ["Wahr","Falsch"]
+- "text": Freitext – wie an einer schriftlichen Prüfung; kurze, klare Musterantwort
+
 Antworte NUR mit einem gültigen JSON-Array (kein Markdown, kein Text davor/danach):
 [
-  {
-    "question": "Frage?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
-    "correct": 0,
-    "explanation": "Kurze Erklärung warum diese Antwort richtig ist."
-  }
+  {"type":"mc",   "question":"Frage?",     "options":["A","B","C","D"], "correct":0, "explanation":"..."},
+  {"type":"tf",   "question":"Aussage.",   "options":["Wahr","Falsch"], "correct":0, "explanation":"..."},
+  {"type":"text", "question":"Erkläre X.", "answer":"Musterantwort",                 "explanation":"..."}
 ]
-"correct" ist der Index (0–3) der richtigen Antwort.
+"correct" ist der Index (0-basiert) der richtigen Antwort (nur für mc und tf).
 Antworte auf Deutsch falls das Dokument auf Deutsch ist.`;
   }
 }
@@ -342,6 +349,7 @@ function renderFlashcard() {
           <button class="btn-primary" onclick="showScreen('upload')">Neue Datei</button>
         </div>
       </div>`;
+    recordStats('flashcards', { correct: state.fcCorrect, total: state.flashcards.length });
     return;
   }
 
@@ -445,30 +453,82 @@ function renderQuestion() {
       const bar = $('score-bar');
       if (bar) bar.style.width = pct + '%';
     }, 100);
+    recordStats('quiz', { score: state.quizScore, total: state.quiz.length });
     return;
   }
 
-  const q    = state.quiz[state.quizIndex];
-  const letters = ['A','B','C','D'];
+  const q = state.quiz[state.quizIndex];
+  const type = q.type || 'mc'; // backward compat: old sets without type field
   state.quizAnswered = false;
 
-  body.innerHTML = `
-    <div class="quiz-question-card">
-      <div class="quiz-q-number">Frage ${state.quizIndex + 1} von ${state.quiz.length}</div>
-      <div class="quiz-q-text">${escHtml(q.question)}</div>
-      <div class="quiz-options">
-        ${q.options.map((opt, i) => `
-          <button class="quiz-option" onclick="quizAnswer(${i})" id="opt-${i}">
-            <span class="option-letter">${letters[i]}</span>
-            ${escHtml(opt)}
-          </button>`).join('')}
-      </div>
-      <div id="quiz-feedback"></div>
-    </div>
+  const nav = `
     <div class="quiz-nav">
       <span style="color:var(--text-muted);font-size:0.9rem">Punkte: ${state.quizScore}</span>
-    </div>
-  `;
+    </div>`;
+
+  if (type === 'text') {
+    body.innerHTML = `
+      <div class="quiz-question-card">
+        <div class="quiz-q-number">Frage ${state.quizIndex + 1} von ${state.quiz.length}
+          <span class="quiz-type-badge">✍️ Freitext</span></div>
+        <div class="quiz-q-text">${escHtml(q.question)}</div>
+        <textarea class="quiz-text-input" id="quiz-text-input"
+          placeholder="Deine Antwort…" rows="4"></textarea>
+        <button class="btn-primary quiz-text-submit" id="quiz-text-submit">Antworten →</button>
+        <div id="quiz-feedback"></div>
+      </div>${nav}`;
+    $('quiz-text-submit').addEventListener('click', () => revealTextAnswer(q));
+    $('quiz-text-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.ctrlKey) revealTextAnswer(q);
+    });
+  } else {
+    // mc or tf — same rendering, just different number of options
+    const letters = ['A','B','C','D'];
+    body.innerHTML = `
+      <div class="quiz-question-card">
+        <div class="quiz-q-number">Frage ${state.quizIndex + 1} von ${state.quiz.length}
+          ${type === 'tf' ? '<span class="quiz-type-badge">✅ Wahr/Falsch</span>' : ''}</div>
+        <div class="quiz-q-text">${escHtml(q.question)}</div>
+        <div class="quiz-options ${type === 'tf' ? 'quiz-options-tf' : ''}">
+          ${q.options.map((opt, i) => `
+            <button class="quiz-option${type === 'tf' ? ' quiz-option-tf' : ''}"
+              onclick="quizAnswer(${i})" id="opt-${i}">
+              ${type === 'mc' ? `<span class="option-letter">${letters[i]}</span>` : ''}
+              ${escHtml(opt)}
+            </button>`).join('')}
+        </div>
+        <div id="quiz-feedback"></div>
+      </div>${nav}`;
+  }
+}
+
+function revealTextAnswer(q) {
+  if (state.quizAnswered) return;
+  state.quizAnswered = true;
+  const inputEl = $('quiz-text-input');
+  const submitEl = $('quiz-text-submit');
+  if (inputEl) inputEl.disabled = true;
+  if (submitEl) submitEl.style.display = 'none';
+
+  const fb = $('quiz-feedback');
+  fb.innerHTML = `
+    <div class="quiz-feedback text-reveal">
+      <div class="text-answer-label">📖 Musterlösung:</div>
+      <div class="text-answer-content">${escHtml(q.answer || '')}</div>
+      ${q.explanation ? `<div class="text-answer-hint">${escHtml(q.explanation)}</div>` : ''}
+      <div class="text-self-assess">
+        <p>Wie gut war deine Antwort?</p>
+        <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap">
+          <button class="btn-wrong"    onclick="quizAnswerSelf(false)">✗ Nicht gewusst</button>
+          <button class="btn-correct"  onclick="quizAnswerSelf(true)">✓ Gewusst</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function quizAnswerSelf(correct) {
+  if (correct) state.quizScore++;
+  quizNext();
 }
 
 function quizAnswer(chosen) {
@@ -514,7 +574,7 @@ function scoreMsg(pct) {
 // ── Back Buttons ──────────────────────────────────────────────────────────────
 function goBack() {
   const active = Object.keys(screens).find(k => screens[k].classList.contains('active'));
-  if (active === 'library') { showScreen('upload'); return; }
+  if (active === 'library' || active === 'plan') { showScreen('upload'); return; }
   showScreen(state.backTarget || 'upload');
 }
 document.querySelectorAll('.btn-back').forEach(btn => {
@@ -602,18 +662,40 @@ function openSaveModal(mode) {
 function closeSaveModal() {
   saveBackdrop.classList.remove('open');
   state.pendingSaveMode = null;
+  state.editingSetId = null;
+  // Reset modal text to default (save mode)
+  saveBackdrop.querySelector('h3').textContent = '💾 Lernset speichern';
+  saveBackdrop.querySelector('p').textContent =
+    'Das Lernset wird lokal in deinem Browser gespeichert und bleibt in deiner Bibliothek verfügbar.';
+  $('save-confirm').textContent = 'Speichern';
 }
 
 function confirmSave() {
+  const title   = $('save-title').value.trim();
+  const subject = $('save-subject').value.trim() || 'Allgemein';
+
+  // ── Edit existing set ───────────────────────────────────────────────────
+  if (state.editingSetId) {
+    const lib = loadLibrary().map(s => {
+      if (s.id !== state.editingSetId) return s;
+      return { ...s, title: title || s.title, subject };
+    });
+    if (persistLibrary(lib)) {
+      localStorage.setItem(LAST_SUBJECT_KEY, subject);
+      closeSaveModal();
+      toast('Lernset aktualisiert ✓', 'success');
+      renderLibrary();
+    }
+    return;
+  }
+
+  // ── Save new set ────────────────────────────────────────────────────────
   const mode = state.pendingSaveMode;
   if (!mode) return;
 
-  const title = $('save-title').value.trim() || MODE_INFO[mode].label;
-  const subject = $('save-subject').value.trim() || 'Allgemein';
-
   const set = {
     id: genId(),
-    title,
+    title: title || MODE_INFO[mode].label,
     subject,
     mode,
     createdAt: Date.now(),
@@ -646,10 +728,41 @@ $('save-title').addEventListener('keydown', e => {
 
 // ── Bibliothek rendern ──────────────────────────────────────────────────────────
 function renderLibrary() {
-  const grid = $('library-grid');
-  const sets = loadLibrary().sort((a, b) => b.createdAt - a.createdAt);
+  const allSets = loadLibrary().sort((a, b) => b.createdAt - a.createdAt);
 
-  if (!sets.length) {
+  // ── Filter Pills ───────────────────────────────────────────────────────
+  const filterBar = $('library-filter-bar');
+  const subjects = [...new Set(allSets.map(s => s.subject).filter(Boolean))].sort();
+
+  if (subjects.length > 1) {
+    filterBar.innerHTML = [
+      `<button class="filter-pill${state.filterSubject === 'all' ? ' active' : ''}" data-subj="all">Alle (${allSets.length})</button>`,
+      ...subjects.map(sub => {
+        const count = allSets.filter(s => s.subject === sub).length;
+        const active = state.filterSubject === sub ? ' active' : '';
+        return `<button class="filter-pill${active}" data-subj="${escHtml(sub)}">${escHtml(sub)} (${count})</button>`;
+      }),
+    ].join('');
+    filterBar.querySelectorAll('.filter-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        state.filterSubject = pill.dataset.subj;
+        renderLibrary();
+      });
+    });
+  } else {
+    filterBar.innerHTML = '';
+    state.filterSubject = 'all';
+  }
+
+  // ── Filter sets ────────────────────────────────────────────────────────
+  const sets = state.filterSubject === 'all'
+    ? allSets
+    : allSets.filter(s => s.subject === state.filterSubject);
+
+  // ── Render cards ───────────────────────────────────────────────────────
+  const grid = $('library-grid');
+
+  if (!allSets.length) {
     grid.innerHTML = `
       <div class="library-empty">
         <div class="empty-icon">📚</div>
@@ -660,9 +773,19 @@ function renderLibrary() {
     return;
   }
 
+  if (!sets.length) {
+    grid.innerHTML = `
+      <div class="library-empty">
+        <div class="empty-icon">🔍</div>
+        <h3>Keine Sets in diesem Fach</h3>
+        <p>Wähle ein anderes Fach oder speichere ein neues Set.</p>
+      </div>`;
+    return;
+  }
+
   grid.innerHTML = sets.map(set => {
-    const info = MODE_INFO[set.mode] || { icon: '📄', label: 'Lernset' };
-    let count = info.label;
+    const info  = MODE_INFO[set.mode] || { icon: '📄', label: 'Lernset' };
+    let count   = info.label;
     if (set.mode === 'flashcards') count = `${set.flashcards?.length || 0} Karten`;
     else if (set.mode === 'quiz')  count = `${set.quiz?.length || 0} Fragen`;
     else if (set.mode === 'summary') count = 'Zusammenfassung';
@@ -673,7 +796,6 @@ function renderLibrary() {
 
     return `
       <div class="library-card" data-id="${set.id}">
-        <button class="lib-card-delete" data-del="${set.id}" title="Löschen">🗑️</button>
         <div class="lib-card-top">
           <div class="lib-card-icon">${info.icon}</div>
           <div class="lib-card-titles">
@@ -684,18 +806,26 @@ function renderLibrary() {
         <div class="lib-card-meta">
           <span class="subject-badge">${escHtml(set.subject)}</span>
           <span class="lib-card-date">${date}</span>
+          <div class="lib-card-actions">
+            <button class="lib-card-action-btn edit"  data-edit="${set.id}"   title="Bearbeiten">✏️</button>
+            <button class="lib-card-action-btn delete" data-del="${set.id}"   title="Löschen">🗑️</button>
+          </div>
         </div>
+        ${getStatsSummary(set) ? `<div class="lib-card-stats-row">${getStatsSummary(set)}</div>` : ''}
       </div>`;
   }).join('');
 
-  // Karten anklickbar machen
+  // Wire card interactions
   grid.querySelectorAll('.library-card').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('.lib-card-delete')) return;
+      if (e.target.closest('.lib-card-action-btn')) return;
       openSet(card.dataset.id);
     });
   });
-  grid.querySelectorAll('.lib-card-delete').forEach(btn => {
+  grid.querySelectorAll('.lib-card-action-btn.edit').forEach(btn => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.edit));
+  });
+  grid.querySelectorAll('.lib-card-action-btn.delete').forEach(btn => {
     btn.addEventListener('click', () => deleteSet(btn.dataset.del));
   });
 }
@@ -706,6 +836,7 @@ function openSet(id) {
 
   state.backTarget = 'library';
   state.sourceName = set.sourceName || '';
+  state.openedFromSetId = set.id;
 
   if (set.mode === 'flashcards') {
     state.flashcards = set.flashcards || [];
@@ -732,13 +863,253 @@ function deleteSet(id) {
   toast('Lernset gelöscht', 'success');
 }
 
+function openEditModal(id) {
+  const set = loadLibrary().find(s => s.id === id);
+  if (!set) return;
+
+  state.editingSetId = id;
+  state.pendingSaveMode = null;
+
+  // Pre-fill with existing values
+  $('save-title').value = set.title;
+  $('save-subject').value = set.subject || '';
+  $('subject-list').innerHTML = getSubjects()
+    .map(s => `<option value="${escHtml(s)}">`).join('');
+
+  // Update modal labels to "edit" mode
+  saveBackdrop.querySelector('h3').textContent = '✏️ Lernset bearbeiten';
+  saveBackdrop.querySelector('p').textContent  = 'Titel und Fach ändern und speichern.';
+  $('save-confirm').textContent = 'Aktualisieren';
+
+  saveBackdrop.classList.add('open');
+  $('save-title').focus();
+  $('save-title').select();
+}
+
 // ── Header-Navigation ─────────────────────────────────────────────────────────
 $('logo-home').addEventListener('click', () => showScreen('upload'));
 $('nav-library').addEventListener('click', () => {
+  state.filterSubject = 'all';
   renderLibrary();
   showScreen('library');
 });
 $('lib-new').addEventListener('click', () => showScreen('upload'));
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Fortschritt & Statistiken (Stage 3)
+// ══════════════════════════════════════════════════════════════════════════════
+function recordStats(mode, data) {
+  const id = state.openedFromSetId;
+  if (!id) return;
+  const lib = loadLibrary().map(s => {
+    if (s.id !== id) return s;
+    const stats = s.stats || { flashcardRuns: [], quizRuns: [] };
+    const entry = { date: new Date().toISOString(), ...data };
+    if (mode === 'flashcards') stats.flashcardRuns = [...(stats.flashcardRuns || []), entry];
+    if (mode === 'quiz')       stats.quizRuns      = [...(stats.quizRuns      || []), entry];
+    return { ...s, stats };
+  });
+  persistLibrary(lib);
+}
+
+function getStatsSummary(set) {
+  const stats = set.stats || {};
+  if (set.mode === 'flashcards') {
+    const runs = stats.flashcardRuns || [];
+    if (!runs.length) return '';
+    const last = runs[runs.length - 1];
+    const pct  = Math.round((last.correct / last.total) * 100);
+    const color = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+    return `<span class="lib-card-stat" style="color:${color}">⚡ Letzte Runde: ${last.correct}/${last.total} (${pct}%)</span>`;
+  }
+  if (set.mode === 'quiz') {
+    const runs = stats.quizRuns || [];
+    if (!runs.length) return '';
+    const last = runs[runs.length - 1];
+    const pct  = Math.round((last.score / last.total) * 100);
+    const color = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+    return `<span class="lib-card-stat" style="color:${color}">⚡ Letztes Quiz: ${last.score}/${last.total} (${pct}%)</span>`;
+  }
+  return '';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Lern-Timer / Pomodoro (Stage 4)
+// ══════════════════════════════════════════════════════════════════════════════
+const timerPanel = $('timer-panel');
+let timerInterval = null;
+let timerSeconds  = 25 * 60;
+let timerRunning  = false;
+
+function timerFormat(s) {
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+}
+
+function timerRender() {
+  $('timer-display').textContent = timerFormat(timerSeconds);
+  $('timer-toggle').textContent = timerRunning ? '⏸ Pause' : '▶ Start';
+}
+
+function timerTick() {
+  if (timerSeconds <= 0) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerRunning = false;
+    $('timer-display').textContent = '00:00';
+    $('timer-toggle').textContent = '▶ Start';
+    toast('⏰ Zeit abgelaufen!', 'success', 5000);
+    try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAA==').play(); } catch {}
+    return;
+  }
+  timerSeconds--;
+  timerRender();
+}
+
+$('timer-toggle').addEventListener('click', () => {
+  if (timerRunning) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerRunning  = false;
+  } else {
+    timerRunning = true;
+    timerInterval = setInterval(timerTick, 1000);
+  }
+  timerRender();
+});
+
+$('timer-reset').addEventListener('click', () => {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  timerRunning  = false;
+  const active = timerPanel.querySelector('.timer-mode-btn.active');
+  timerSeconds = (active ? parseInt(active.dataset.minutes) : 25) * 60;
+  timerRender();
+});
+
+$('timer-close').addEventListener('click', () => { timerPanel.style.display = 'none'; });
+
+$('nav-timer').addEventListener('click', () => {
+  timerPanel.style.display = timerPanel.style.display === 'none' ? 'block' : 'none';
+});
+
+timerPanel.querySelectorAll('.timer-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    timerPanel.querySelectorAll('.timer-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    clearInterval(timerInterval); timerInterval = null; timerRunning = false;
+    timerSeconds = parseInt(btn.dataset.minutes) * 60;
+    const labels = { '25': '🍅 Lernen', '5': '☕ Kurze Pause', '10': '🌿 Lange Pause' };
+    $('timer-mode-label').textContent = labels[btn.dataset.minutes] || '⏱️ Timer';
+    timerRender();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Lernplan (Stage 5)
+// ══════════════════════════════════════════════════════════════════════════════
+const PLAN_KEY = 'studyai_plan_v1';
+
+function loadPlan()        { try { return JSON.parse(localStorage.getItem(PLAN_KEY)) || []; } catch { return []; } }
+function persistPlan(plan) { try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch { toast('Speicher voll', 'error'); } }
+
+const planBackdrop = $('plan-backdrop');
+function openPlanModal() {
+  $('plan-title').value = '';
+  $('plan-date').value  = new Date().toISOString().slice(0,10);
+  planBackdrop.classList.add('open');
+  $('plan-title').focus();
+}
+function closePlanModal() { planBackdrop.classList.remove('open'); }
+
+$('plan-add-btn').addEventListener('click', openPlanModal);
+$('plan-cancel').addEventListener('click', closePlanModal);
+planBackdrop.addEventListener('click', e => { if (e.target === planBackdrop) closePlanModal(); });
+
+$('plan-confirm').addEventListener('click', () => {
+  const title = $('plan-title').value.trim();
+  const date  = $('plan-date').value;
+  if (!title) { toast('Bitte einen Titel eingeben', 'error'); return; }
+  const plan = loadPlan();
+  plan.push({ id: genId(), title, targetDate: date, completed: false, createdAt: Date.now() });
+  persistPlan(plan);
+  closePlanModal();
+  renderPlan();
+  toast('Lernziel hinzugefügt ✓', 'success');
+});
+
+$('plan-title').addEventListener('keydown', e => { if (e.key === 'Enter') $('plan-confirm').click(); });
+
+function renderPlan() {
+  const body  = $('plan-body');
+  const items = loadPlan().sort((a,b) => a.targetDate.localeCompare(b.targetDate));
+  const today = new Date().toISOString().slice(0,10);
+  const weekEnd = new Date(Date.now() + 7*24*3600*1000).toISOString().slice(0,10);
+
+  const groups = [
+    { key:'overdue',  label:'🔴 Überfällig',    filter: i => !i.completed && i.targetDate < today },
+    { key:'today',    label:'📅 Heute',          filter: i => !i.completed && i.targetDate === today },
+    { key:'week',     label:'📆 Diese Woche',    filter: i => !i.completed && i.targetDate > today && i.targetDate <= weekEnd },
+    { key:'later',    label:'🔮 Später',         filter: i => !i.completed && i.targetDate > weekEnd },
+    { key:'done',     label:'✅ Erledigt',        filter: i => i.completed },
+  ];
+
+  if (!items.length) {
+    body.innerHTML = `
+      <div class="plan-empty">
+        <div class="empty-icon">📅</div>
+        <h3>Noch keine Lernziele</h3>
+        <p>Klick auf „+ Ziel hinzufügen", um loszulegen.</p>
+      </div>`;
+    return;
+  }
+
+  body.innerHTML = groups
+    .map(g => {
+      const list = items.filter(g.filter);
+      if (!list.length) return '';
+      return `
+        <div class="plan-group">
+          <h3 class="plan-group-title">${g.label}</h3>
+          ${list.map(item => `
+            <div class="plan-item${item.completed ? ' completed' : ''}">
+              <input type="checkbox" class="plan-check" data-id="${item.id}"
+                ${item.completed ? 'checked' : ''}>
+              <div class="plan-item-body">
+                <div class="plan-item-title">${escHtml(item.title)}</div>
+                <div class="plan-item-date">Fällig: ${formatPlanDate(item.targetDate)}</div>
+              </div>
+              <button class="lib-card-action-btn delete plan-delete" data-id="${item.id}" title="Löschen">🗑️</button>
+            </div>`).join('')}
+        </div>`;
+    }).join('');
+
+  body.querySelectorAll('.plan-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const plan = loadPlan().map(i => i.id === cb.dataset.id ? { ...i, completed: cb.checked } : i);
+      persistPlan(plan);
+      renderPlan();
+    });
+  });
+  body.querySelectorAll('.plan-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Lernziel löschen?')) return;
+      persistPlan(loadPlan().filter(i => i.id !== btn.dataset.id));
+      renderPlan();
+    });
+  });
+}
+
+function formatPlanDate(iso) {
+  if (!iso) return '—';
+  const [y,m,d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+$('nav-plan').addEventListener('click', () => {
+  renderPlan();
+  showScreen('plan');
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 showScreen('upload');
